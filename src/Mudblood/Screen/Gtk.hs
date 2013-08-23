@@ -174,7 +174,7 @@ appendToMainBuffer astr = do mapM_ appendChunk (groupAttrString $ untab 8 astr)
                             endIter' <- G.textBufferGetIterAtOffset mainbuf endOffset
                             G.textBufferApplyTagByName mainbuf (tagNameForAttr a) startIter' endIter'
                             return ()
-            
+
 execUIAction :: MBUIAction -> Screen ()
 execUIAction action = case action of
     MBUIStatus str -> askControls >>= (\l -> liftIO $ G.labelSetText l str) . ctlStatusUser
@@ -252,14 +252,14 @@ initUI path stref = do
         -}
 
     -- Key press handler
-    mainView `on` G.keyPressEvent $ do
+    mainInput `on` G.keyPressEvent $ do
         keyname <- G.eventKeyName
         keychar <- fmap G.keyToChar G.eventKeyVal
         case mapKey keychar keyname of
             Just k -> do
                       handled <- liftIO $ runScreen controls stref $ handleKey k
                       if handled then return True
-                                 else G.widgetEvent mainInput
+                                 else return False
             Nothing -> return False
 
     -- Always scroll to end when new text arrives
