@@ -1,0 +1,39 @@
+name:               mudblood
+version:            0.1.0.0
+license:            GPL-3
+license-file:       LICENSE
+author:             Philip Kranz
+maintainer:         philip.kranz@googlemail.com
+category:           Game
+build-type:         Simple
+cabal-version:      >=1.8
+
+data-dir:           res
+data-files:         gui.glade
+
+Flag Debug
+    description:    Enable debugging
+    default:        False
+
+Flag Gtk
+    description:    Include GTK frontend
+    default:        True
+
+Flag Vty
+    description:    Include Vty frontend
+    default:        True
+
+executable mudblood
+    main-is:            Main.hs
+    ghc-options:        -O3 -threaded -rtsopts -with-rtsopts=-N
+    other-modules:      Paths_mudblood
+    build-depends:      base, mtl, stm, utf8-string, bytestring,
+                        network, hint, containers, split, binary,
+                        parsec, either, regex-base, regex-pcre-builtin, array,
+                        free
+    hs-source-dirs:     src
+
+    if !os(windows) && flag(vty)
+        build-depends: unix, terminfo, ansi-terminal, vty
+    if flag(gtk)
+        build-depends: gtk, pango
