@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ExistentialQuantification, GeneralizedNewtypeDeriving, TypeSynonymInstances, FlexibleInstances #-}
 
 module Mudblood.Core
     ( 
@@ -9,10 +9,10 @@ module Mudblood.Core
     , LogSeverity (LogDebug, LogInfo, LogWarning, LogError)
     -- * The MBF Functor
     , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI)
-    , MBUIAction (..)
     -- * MB primitives
-    , command, quit, logger, process, outputAString, outputString, error
-    , connect, sendString, sendBinary, setUiValue
+    , command, quit, logger, process, error
+    , connect, sendBinary
+    , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData)
     -- * Events
     -- ** The trigger event type
     , TriggerEvent (LineTEvent, SendTEvent, TelnetTEvent)
@@ -39,12 +39,11 @@ import Control.Exception
 
 import qualified Codec.Binary.UTF8.String as UTF8
 
-import Mudblood.UiValue
+import Mudblood.UI
 import Mudblood.Telnet
 import Mudblood.Text
 import Mudblood.Trigger
 import Mudblood.Command
-import Mudblood.UserData
 
 import Debug.Trace
 
@@ -56,11 +55,48 @@ data LogSeverity = LogDebug
 
 --------------------------------------------------------------------------------------------------
 
+-- | Type class that contains common functions of triggers and MB actions.
+class (Monad m) => MBMonad m where
+    echoA :: AttrString -> m ()
+    echoA = echo . fromAttrString
+
+    echo :: String -> m ()
+    echo = echoA . toAttrString
+
+    send :: String -> m ()
+
+    ui :: UIAction -> m ()
+
+    io :: IO a -> m a
+
+    getUserDataDynamic :: m Dynamic
+
+    modifyUserDataDynamic :: (Dynamic -> Dynamic) -> m ()
+    modifyUserDataDynamic f = getUserDataDynamic >>= putUserDataDynamic . f
+
+    putUserDataDynamic :: Dynamic -> m ()
+    putUserDataDynamic d = modifyUserDataDynamic (\_ -> d)
+
+    getUserData :: (Typeable a) => m a
+    getUserData = do
+        ud <- getUserDataDynamic
+        case fromDynamic ud of
+            Just ud' -> return ud'
+            Nothing  -> fail "THIS IS A BUG: User data corrupted."
+
+    putUserData :: (Typeable a) => a -> m ()
+    putUserData d = putUserDataDynamic (toDyn d)
+
+    modifyUserData :: (Typeable a) => (a -> a) -> m ()
+    modifyUserData f = getUserData >>= putUserData . f
+
+--------------------------------------------------------------------------------------------------
+
 data MBState = MBState {
     mbLinebuffer :: [AttrString],
     mbLog :: [String],
     mbTrigger :: Maybe (TriggerFlow TriggerEvent),
-    mbUiValues :: M.Map String UiValue,
+    --mbUiValues :: M.Map String UiValue,
     mbUserData :: Dynamic
 }
 
@@ -74,7 +110,7 @@ mkMBState triggers user = MBState {
     mbLinebuffer = [],
     mbLog = [],
     mbTrigger = triggers,
-    mbUiValues = M.empty,
+    --mbUiValues = M.empty,
     mbUserData = toDyn user
     }
 
@@ -82,15 +118,12 @@ data MBConfig = MBConfig {
     confCommands :: M.Map String (Command MB)
 }
 
-data MBUIAction = MBUIStatus String
-                | MBUISetValue String UiValue
-
 data MBF o = forall a. MBFIO (IO a) (a -> o)
            | MBFLine AttrString o
            | MBFSend [Word8] o
            | MBFConnect String String o
            | MBFQuit o
-           | MBFUI MBUIAction o
+           | MBFUI UIAction o
 
 instance Functor MBF where
     fmap f (MBFIO action g) = MBFIO action $ f . g
@@ -123,6 +156,9 @@ dispatchConnect h p = liftF $ MBFConnect h p ()
 
 dispatchQuit :: MB ()
 dispatchQuit = liftF $ MBFQuit ()
+
+dispatchUI :: UIAction -> MB ()
+dispatchUI a = liftF $ MBFUI a ()
 
 --------------------------------------------------------------------------------------------------
 
@@ -186,23 +222,13 @@ trigger ev =
   where
     finishTEvent :: TriggerEvent -> MB ()
     finishTEvent ev = case ev of
-        LineTEvent line -> outputAString line
-        SendTEvent line -> sendString line
+        LineTEvent line -> echoA line
+        SendTEvent line -> send line
         TelnetTEvent t -> return ()
-
--- | Output an AttrString to the main linebuffer.
-outputAString :: AttrString -> MB ()
-outputAString str = do
-    modify $ \s -> s { mbLinebuffer = str:(mbLinebuffer s) }
-    dispatchLine str
-
--- | Output a String to the main linebuffer. ANSI sequences will be parsed as needed.
-outputString :: String -> MB ()
-outputString str = forM_ (lines str) $ \x -> outputAString $ fst $ decode x defaultAttr
 
 -- | Output an error.
 error :: String -> MB ()
-error str = outputString $ "Error: " ++ str
+error str = echo $ "Error: " ++ str
 
 connect :: String -> String -> MB ()
 connect = dispatchConnect
@@ -211,17 +237,21 @@ connect = dispatchConnect
 sendBinary :: [Word8] -> MB ()
 sendBinary = dispatchSend
 
+{-
 -- | Send a string to the socket. UTF8 will be assumed as encoding.
-sendString :: String -> MB ()
-sendString str = sendBinary $ UTF8.encode (str ++ "\n")
-
 -- | Set a UI value
 setUiValue :: String -> UiValue -> MB ()
 setUiValue k v = case (k, v) of
     ("status", UiStringValue str) -> liftF $ MBFUI (MBUIStatus str) ()
     (k, v) -> liftF $ MBFUI (MBUISetValue k v) ()
+-}
 
-instance UserData MB where
+instance MBMonad MB where
+    send str = sendBinary $ UTF8.encode $ str ++ "\n"
+    echoA = dispatchLine
+    ui = dispatchUI
+    io = dispatchIO
+
     getUserDataDynamic = gets mbUserData
 
     putUserDataDynamic d = do
@@ -229,14 +259,25 @@ instance UserData MB where
 
 --------------------------------------------------------------------------------------------------
 
+instance MBMonad (Trigger i y) where
+    send s = liftF $ Send s ()
+    echo s = liftF $ Echo s ()
+    ui action = liftF $ PutUI action ()
+    io action = liftF $ RunIO action id
+
+    getUserDataDynamic = liftF $ GetUserData id
+    putUserDataDynamic d = liftF $ PutUserData d ()
+
 -- | Interpreter for the Trigger Monad
 runTriggerMB :: Trigger i o o -> MB (TriggerResult i o o)
 runTriggerMB (Pure r) = return $ TResult r
 runTriggerMB (Free (Yield y f)) = return $ TYield y f
 runTriggerMB (Free (Fail)) = return $ TFail
-runTriggerMB (Free (Echo s x)) = outputString s >> runTriggerMB x
-runTriggerMB (Free (Send s x)) = sendString (s ++ "\n") >> runTriggerMB x
+runTriggerMB (Free (Echo s x)) = echo s >> runTriggerMB x
+runTriggerMB (Free (Send s x)) = send (s ++ "\n") >> runTriggerMB x
 runTriggerMB (Free (GetUserData g)) = getUserDataDynamic >>= runTriggerMB . g
 runTriggerMB (Free (PutUserData d x)) = putUserDataDynamic d >> runTriggerMB x
-runTriggerMB (Free (PutUI k v x)) = setUiValue k v >> runTriggerMB x
-runTriggerMB (Free (RunIO action f)) = dispatchIO action >>= runTriggerMB . f
+runTriggerMB (Free (PutUI a x)) = ui a >> runTriggerMB x
+runTriggerMB (Free (RunIO action f)) = io action >>= runTriggerMB . f
+
+

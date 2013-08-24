@@ -14,7 +14,7 @@ defaultStatus :: MBTrigger ()
 defaultStatus = do
     st <- getState
     let s = mgStats st
-    putUIString "status" $
+    ui $ UIStatus $
         printf "LP: %d / %d | KP: %d / %d | Flucht: %s (%d) | %c%c%c%c"
             (mgStatLP s)
             (mgStatMLP s)
@@ -72,7 +72,7 @@ defaultTanjianStatus = do
     st <- getState
     let s = mgStats st
     let ts = mgTanjianStats st
-    putUIString "status" $
+    ui $ UIStatus $
         printf "LP: %d / %d | KP: %d / %d | Flucht: %s (%d) | %c%c%c%c | %s%s%s%s | %s"
             (mgStatLP s)
             (mgStatMLP s)
@@ -148,7 +148,7 @@ defaultZaubererStatus = do
     st <- getState
     let s = mgStats st
     let zs = mgZaubererStats st
-    putUIString "status" $
+    ui $ UIStatus $
         printf "%d / %d | %d / %d | %d / %d | Flucht: %s (%d) | %c%c%c%c | %s%s%s%s | H:%s S:%s"
             (mgStatLP s)
             (mgStatMLP s)

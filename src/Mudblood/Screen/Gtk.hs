@@ -35,6 +35,7 @@ import Mudblood.Core
 import Mudblood.Telnet
 import Mudblood.Keys
 import Mudblood.Text
+import Mudblood.UI
 
 import Paths_mudblood
 
@@ -137,7 +138,7 @@ telnetReceive ev = do
     case ev of
         DataEvent chars  -> do (p, _) <- mb $ process (scrPrompt st) chars defaultAttr -- TODO: where to save current attr?
                                modify $ \st -> st { scrPrompt = p }
-        CloseEvent          -> mb $ outputString "Connection closed"
+        CloseEvent          -> mb $ echo "Connection closed"
         TelnetEvent neg     -> do
                                handleTelneg neg
                                mb $ logger LogDebug $ show neg
@@ -175,9 +176,9 @@ appendToMainBuffer astr = do mapM_ appendChunk (groupAttrString $ untab 8 astr)
                             G.textBufferApplyTagByName mainbuf (tagNameForAttr a) startIter' endIter'
                             return ()
 
-execUIAction :: MBUIAction -> Screen ()
+execUIAction :: UIAction -> Screen ()
 execUIAction action = case action of
-    MBUIStatus str -> askControls >>= (\l -> liftIO $ G.labelSetText l str) . ctlStatusUser
+    UIStatus str -> askControls >>= (\l -> liftIO $ G.labelSetText l str) . ctlStatusUser
 
 ------------------------------------------------------------------------------
 
@@ -324,8 +325,8 @@ handleKey key = do
                   else case key of
                            KEnter -> do
                                      text <- liftIO $ G.get (ctlMainInput ctrls) G.entryText
-                                     mb $ outputAString (setFg Yellow (toAttrString text))
-                                     mb $ sendString text
+                                     mb $ echoA (setFg Yellow (toAttrString text))
+                                     mb $ send text
                                      liftIO $ G.set (ctlMainInput ctrls) [ G.entryText := "" ]
                                      return True
                            _ -> return False
@@ -387,4 +388,4 @@ handleTelneg neg = case neg of
     -}
     -- All other telnegs are just printed
     _ ->
-        mb $ outputAString $ (setFg Magenta $ toAttrString $ show neg)
+        mb $ echoA $ (setFg Magenta $ toAttrString $ show neg)

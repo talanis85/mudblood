@@ -22,7 +22,7 @@ import Mudblood.User.Trigger
 commands = M.fromList
     [ ("echo", Command ["text"] $ do
         x <- getStringParam 0
-        lift $ outputAString $ fst $ decode x defaultAttr
+        lift $ echoA $ fst $ decode x defaultAttr
         )
     , ("quit", Command [] $ do
         lift quit

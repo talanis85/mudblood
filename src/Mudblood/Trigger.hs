@@ -8,7 +8,7 @@ module Mudblood.Trigger
     , TriggerFlow (Permanent, Volatile, (:||:), (:>>:))
     , runTriggerFlow
     , Free (Pure, Free)
-    , failT, yield, echo, send, getUserData, putUserData, putUIString, runIO
+    , failT, yield, --echo, send, getUserData, putUserData, putUIString, runIO
     ) where
 
 import Prelude hiding (fail)
@@ -19,8 +19,7 @@ import Data.Monoid
 import Data.Dynamic (Dynamic)
 import Data.Typeable
 
-import Mudblood.UiValue
-import Mudblood.UserData
+import Mudblood.UI
 
 -- A TriggerFlow is a flow chart of triggers. Triggers can either be Permanent or
 -- Volatile. They can be combined in sequence or parallel.
@@ -106,7 +105,7 @@ data TriggerF i y o = Result o
                     | Send String o
                     | GetUserData (Dynamic -> o)
                     | PutUserData Dynamic o
-                    | PutUI String UiValue o
+                    | PutUI UIAction o
 
 instance Functor (TriggerF i y) where
     fmap f (Result o) = Result $ f o
@@ -117,7 +116,7 @@ instance Functor (TriggerF i y) where
     fmap f (Send s x) = Send s $ f x
     fmap f (GetUserData g) = GetUserData $ f . g
     fmap f (PutUserData d x) = PutUserData d $ f x
-    fmap f (PutUI k v x) = PutUI k v $ f x
+    fmap f (PutUI a x) = PutUI a $ f x
 
 -- Free monad of trigger functor
 
@@ -139,19 +138,3 @@ failT = liftF $ Fail
 
 yield :: y -> Trigger i y i
 yield x = liftF $ Yield x id
-
-echo :: String -> Trigger i y ()
-echo s = liftF $ Echo s ()
-
-send :: String -> Trigger i y ()
-send s = liftF $ Send s ()
-
-instance UserData (Trigger i y) where
-    getUserDataDynamic = liftF $ GetUserData id
-    putUserDataDynamic d = liftF $ PutUserData d ()
-
-putUIString :: String -> String -> Trigger i y ()
-putUIString k v = liftF $ PutUI k (UiStringValue v) ()
-
-runIO :: IO a -> Trigger i y a
-runIO action = liftF $ RunIO action id
