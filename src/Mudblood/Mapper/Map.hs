@@ -48,7 +48,12 @@ instance JSON Map where
             { mapGraph   = mkGraph rooms exits
             , mapCurrent = 0
             }
+
     readJSON _ = fail "Expected object"
+
+    showJSON m = showJSON $ toJSObject [ ("rooms", showJSON $ map JSRoom (labNodes $ mapGraph m))
+                                       , ("exits", showJSON $ map JSExit (labEdges $ mapGraph m))
+                                       ]
 
 instance JSON JSRoom where
     readJSON (JSObject o) = do
@@ -62,6 +67,10 @@ instance JSON JSRoom where
         return $ JSRoom (id, roomData)
 
     readJSON _ = fail "Expected object"
+
+    showJSON r = showJSON $ toJSObject [ ("id", showJSON $ fst (getJSRoom r))
+                                       , ("userdata", showJSON $ roomUserData $ snd $ getJSRoom r)
+                                       ]
 
 instance JSON JSExit where
     readJSON (JSObject o) = do
@@ -81,6 +90,17 @@ instance JSON JSExit where
 
     readJSON _ = fail "Expected object"
 
+    showJSON e = let (src, dest, d) = getJSExit e
+                 in showJSON $ toJSObject [ ("src", showJSON src)
+                                          , ("dest", showJSON dest)
+                                          , ("layer", showJSON $ exitLayer d)
+                                          , ("userdata", showJSON $ exitUserData d)
+                                          , ("key", showJSON $ exitKey d)
+                                          ]
+
 instance JSON JSUserData where
     readJSON (JSObject o) = return $ JSUserData $ M.fromList $ fromJSObject o
 
+    readJSON _ = fail "Expected object"
+
+    showJSON d = showJSON $ toJSObject $ M.toList (getJSUserData d)
