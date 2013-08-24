@@ -4,6 +4,7 @@ module Mudblood.Mapper.Map
     ( Map (..)
     , RoomData (..)
     , ExitData (..)
+    , mapEmpty
     ) where
 
 import Text.JSON
@@ -38,6 +39,11 @@ data Map = Map
     }
   deriving (Show)
 
+mapEmpty :: Map
+mapEmpty = Map 
+    { mapGraph = mkGraph [] []
+    , mapCurrent = 0
+    }
 
 instance JSON Map where
     readJSON (JSObject o) = do
