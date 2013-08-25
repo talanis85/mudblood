@@ -56,6 +56,19 @@ dynTriggers = Permanent $ \x -> do
 
 triggers = fightColorizer :>>: zaubererreportTrigger defaultZaubererStatus :>>: colorTriggers :>>: dynTriggers
 
+tanjianBindings = [ ([KF1],  spell "meditation")
+                  , ([KF2],  spell "kokoro")
+                  , ([KF3],  spell "kami %f")
+                  , ([KF4],  spell "kageodori")
+                  , ([KF5],  spell "tegatana")
+                  , ([KF6],  spell "omamori")
+                  , ([KF7],  spell "hayai")
+                  , ([KF8],  spell "akshara")
+                  , ([KF9],  spell "kaminari %f")
+                  , ([KF10], spell "arashi %f")
+                  , ([KF11], spell "samusa %f")
+                  , ([KF12], spell "kshira %f")
+                  ]
 
 boot :: Screen ()
 boot =
@@ -64,6 +77,9 @@ boot =
     bind [KEsc, KBS, KAscii '!', KAscii 'x', KEsc, KBS, KAscii 'q'] $ mb quit
     mb $ connect "openfish" "9999"
     --mb $ connect "localhost" "10000"
+    
+    mapM_ (\(a,b) -> bind a (mb b)) tanjianBindings
+
     screen
 
 main :: IO ()
