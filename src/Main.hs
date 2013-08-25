@@ -73,7 +73,7 @@ dynTriggers = Permanent $ \x -> do
     st <- getState
     runDynTriggers (mgDynTriggers st) x
 
-triggers = fightColorizer :>>: zaubererreportTrigger defaultZaubererStatus :>>: colorTriggers :>>: dynTriggers
+triggers = fightColorizer :>>: zaubererreportTrigger defaultZaubererStatus :>>: colorTriggers :>>: dynTriggers :>>: moveTrigger
 
 
 boot :: Screen ()
