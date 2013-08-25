@@ -273,7 +273,8 @@ instance MBMonad MB where
         modify $ \st -> st { mbUserData = d }
 
     getMap = gets mbMap
-    putMap d = modify $ \s -> s { mbMap = d }
+    putMap d = do modify $ \s -> s { mbMap = d }
+                  liftF $ MBFUI UIUpdateMap ()
 
 --------------------------------------------------------------------------------------------------
 
