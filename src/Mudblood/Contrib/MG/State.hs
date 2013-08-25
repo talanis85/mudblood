@@ -21,6 +21,8 @@ data MGState = MGState
     , mgTanjianStats  :: MGTanjianStats
     , mgZaubererStats :: MGZaubererStats
     , mgDynTriggers   :: DynTriggerTable
+
+    , mgFocus         :: Maybe String
     }
   deriving (Typeable)
 
@@ -53,6 +55,8 @@ newMGState = MGState
     , mgTanjianStats    = mkMGTanjianStats
     , mgZaubererStats   = mkMGZaubererStats
     , mgDynTriggers     = mkDynTriggerTable
+
+    , mgFocus           = Nothing
     }
 
 modifyState :: (MGState -> MGState) -> Trigger a b ()
