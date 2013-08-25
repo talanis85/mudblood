@@ -301,5 +301,5 @@ runTriggerMB (Free (GetUserData g)) = getUserDataDynamic >>= runTriggerMB . g
 runTriggerMB (Free (PutUserData d x)) = putUserDataDynamic d >> runTriggerMB x
 runTriggerMB (Free (PutUI a x)) = ui a >> runTriggerMB x
 runTriggerMB (Free (RunIO action f)) = io action >>= runTriggerMB . f
-
-
+runTriggerMB (Free (GetMap g)) = getMap >>= runTriggerMB . g
+runTriggerMB (Free (PutMap d x)) = putMap d >> runTriggerMB x
