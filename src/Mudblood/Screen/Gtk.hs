@@ -182,9 +182,8 @@ appendToMainBuffer astr = do mapM_ appendChunk (groupAttrString $ untab 8 astr)
 execUIAction :: UIAction -> Screen ()
 execUIAction action = case action of
     UIStatus str -> askControls >>= (\l -> liftIO $ G.labelSetText l str) . ctlStatusUser
-    UIUpdateMap -> do
+    UIUpdateMap map -> do
         ctls <- askControls
-        map <- mb $ getMap
         liftIO $ G.labelSetText (ctlStatusSystem ctls) $
             printf "Room: %d" (mapCurrent map)
 

@@ -274,7 +274,7 @@ instance MBMonad MB where
 
     getMap = gets mbMap
     putMap d = do modify $ \s -> s { mbMap = d }
-                  liftF $ MBFUI UIUpdateMap ()
+                  dispatchUI $ UIUpdateMap d
 
 --------------------------------------------------------------------------------------------------
 
