@@ -1,10 +1,15 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances, FlexibleContexts #-}
 
 module Mudblood.Mapper.Map
-    ( Map (..)
+    (
+    -- * Types
+      Map (..)
     , RoomData (..)
     , ExitData (..)
-    , mapEmpty
+    -- * Loading maps
+    , mapEmpty, mapFromString, mapFromFile
+    -- * Paths
+    , shortestPath
     ) where
 
 import Text.JSON
@@ -39,11 +44,22 @@ data Map = Map
     }
   deriving (Show)
 
+-- | Create an empty map.
 mapEmpty :: Map
 mapEmpty = Map 
     { mapGraph = mkGraph [] []
     , mapCurrent = 0
     }
+
+-- | Load a map from a string in JSON format.
+mapFromString :: String -> Maybe Map
+mapFromString str = case decode str of
+    Ok map -> Just map
+    Error _ -> Nothing
+
+-- | Load a map from a file in JSON format.
+mapFromFile :: FilePath -> IO (Maybe Map)
+mapFromFile path = readFile path >>= return . mapFromString
 
 instance JSON Map where
     readJSON (JSObject o) = do
@@ -110,3 +126,15 @@ instance JSON JSUserData where
     readJSON _ = fail "Expected object"
 
     showJSON d = showJSON $ toJSObject $ M.toList (getJSUserData d)
+
+
+-- | Shortest path from one room to another.
+shortestPath :: (Real w) => Map -> (ExitData -> w) -> Int -> Int -> [String]
+shortestPath m weightfun src dest = let graph = mapGraph m
+                                    in case sp src dest (emap weightfun graph) of
+                                        []            -> []
+                                        (first:nodes) -> snd $ foldl (foldPath graph) (first, []) nodes
+
+    where foldPath graph (s, p) d = let (_, _, edge) = head $ filter (goesTo d) $ out graph s
+                                    in (d, (exitKey edge):p)
+          goesTo d' (_, d, _) = d == d'
