@@ -325,8 +325,11 @@ handleKey key = do
                   else case key of
                            KEnter -> do
                                      text <- liftIO $ G.get (ctlMainInput ctrls) G.entryText
-                                     mb $ echoA (setFg Yellow (toAttrString text))
-                                     mb $ send text
+                                     case text of
+                                        (':':cmd) -> mb $ command cmd
+                                        _ -> do
+                                             mb $ echoA (setFg Yellow (toAttrString text))
+                                             mb $ send text
                                      liftIO $ G.set (ctlMainInput ctrls) [ G.entryText := "" ]
                                      return True
                            _ -> return False
