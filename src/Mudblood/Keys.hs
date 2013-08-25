@@ -6,6 +6,8 @@ data Key = KAscii Char
          | KEnter
          | KBS
          | KEsc
+         | KF1 | KF2 | KF3 | KF4 | KF5 | KF6
+         | KF7 | KF8 | KF9 | KF10 | KF11 | KF12
          | KUndefined
     deriving (Eq)
 

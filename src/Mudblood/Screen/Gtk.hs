@@ -199,6 +199,20 @@ mapKey chr name = case name of
     "Return"    -> Just KEnter
     "Escape"    -> Just KEsc
     "BackSpace" -> Just KBS
+
+    "F1"        -> Just KF1
+    "F2"        -> Just KF2
+    "F3"        -> Just KF3
+    "F4"        -> Just KF4
+    "F5"        -> Just KF5
+    "F6"        -> Just KF6
+    "F7"        -> Just KF7
+    "F8"        -> Just KF8
+    "F9"        -> Just KF9
+    "F10"       -> Just KF10
+    "F11"       -> Just KF11
+    "F12"       -> Just KF12
+
     _           -> fmap KAscii chr
 
 initUI :: String -> IORef ScreenState -> IO ScreenControls
