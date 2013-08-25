@@ -11,7 +11,7 @@ module Mudblood.Core
     , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI)
     -- * MB primitives
     , command, quit, logger, process, error
-    , connect, sendBinary
+    , connect, sendBinary, modifyTriggers
     , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData)
     -- * Events
     -- ** The trigger event type
@@ -236,6 +236,10 @@ connect = dispatchConnect
 -- | Send binary data to the socket.
 sendBinary :: [Word8] -> MB ()
 sendBinary = dispatchSend
+
+-- | Modify the global TriggerFlow
+modifyTriggers :: (Maybe MBTriggerFlow -> Maybe MBTriggerFlow) -> MB ()
+modifyTriggers f = modify $ \s -> s { mbTrigger = f (mbTrigger s) }
 
 {-
 -- | Send a string to the socket. UTF8 will be assumed as encoding.
