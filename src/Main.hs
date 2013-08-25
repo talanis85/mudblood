@@ -16,6 +16,8 @@ import Text.Printf
 import Mudblood.Contrib.MG
 
 import Mudblood.User.Trigger
+import Mudblood.Mapper.Map
+import Mudblood.Mapper.Walk
 
 -- COMMANDS ------------------------------------------------------------
 
@@ -45,6 +47,23 @@ commands = M.fromList
         h <- getStringParam 0
         p <- getStringParam 1
         lift $ connect h p
+        )
+    , ("walk", Command ["source", "destination"] $ do
+        map <- lift $ getMap
+        src <- getIntParam 0
+        dest <- getIntParam 1
+        case shortestPath map (const 1) src dest of
+            []           -> fail "Path not found"
+            (first:path) -> do
+                            lift $ modifyTriggers $ fmap (:>>: (walker (const $ return WalkerContinue) path))
+                            lift $ send first
+        )
+    , ("loadmap", Command ["filename"] $ do
+        filename <- getStringParam 0
+        map <- lift $ io $ mapFromFile filename
+        case map of
+            Just map' -> lift $ putMap map'
+            Nothing -> lift $ echo "Invalid map file"
         )
     ]
 
