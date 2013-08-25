@@ -27,6 +27,10 @@ data RoomData = RoomData
     }
   deriving (Show)
 
+mkRoomData = RoomData
+    { roomUserData = M.empty
+    }
+
 newtype JSRoom = JSRoom { getJSRoom :: LNode RoomData }
 
 data ExitData = ExitData
@@ -49,7 +53,7 @@ data Map = Map
 -- | Create an empty map.
 mapEmpty :: Map
 mapEmpty = Map 
-    { mapGraph = mkGraph [] []
+    { mapGraph = mkGraph [(0, mkRoomData)] []
     , mapCurrent = 0
     }
 
