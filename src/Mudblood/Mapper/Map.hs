@@ -20,6 +20,8 @@ import qualified Data.Map as M
 import Data.Graph.Inductive
 import Data.Graph.Inductive.Tree
 
+type MapGraph = Gr RoomData ExitData
+
 data RoomData = RoomData
     { roomUserData :: M.Map String JSValue
     }
@@ -39,7 +41,7 @@ newtype JSExit = JSExit { getJSExit :: LEdge ExitData }
 newtype JSUserData = JSUserData { getJSUserData :: M.Map String JSValue }
 
 data Map = Map
-    { mapGraph :: Gr RoomData ExitData
+    { mapGraph :: MapGraph
     , mapCurrent :: Node
     }
   deriving (Show)
@@ -127,6 +129,9 @@ instance JSON JSUserData where
 
     showJSON d = showJSON $ toJSObject $ M.toList (getJSUserData d)
 
+-- | Map a function over the graph of a map.
+mapMapGraph :: (MapGraph -> MapGraph) -> Map -> Map
+mapMapGraph f g = g { mapGraph = f (mapGraph g) }
 
 -- | Shortest path from one room to another.
 shortestPath :: (Real w) => Map -> (ExitData -> w) -> Int -> Int -> [String]
