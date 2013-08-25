@@ -329,7 +329,7 @@ handleKey key = do
                                         (':':cmd) -> mb $ command cmd
                                         _ -> do
                                              mb $ echoA (setFg Yellow (toAttrString text))
-                                             mb $ send text
+                                             mb $ processSend text
                                      liftIO $ G.set (ctlMainInput ctrls) [ G.entryText := "" ]
                                      return True
                            _ -> return False

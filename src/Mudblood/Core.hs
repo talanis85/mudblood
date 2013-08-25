@@ -10,7 +10,7 @@ module Mudblood.Core
     -- * The MBF Functor
     , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI)
     -- * MB primitives
-    , command, quit, logger, process, error
+    , command, quit, logger, process, processSend, error
     , connect, sendBinary, modifyTriggers
     , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData)
     -- * Events
@@ -207,6 +207,10 @@ process pr str a =
     lines' str = splitWhen (== '\n') str
     decodeFold cur (l, a) = let (line, attr) = decode cur a
                             in (line:l, attr)
+
+processSend :: String -> MB ()
+processSend str = do
+    trigger $ SendTEvent str
 
 -- | Feed a trigger event to the global trigger chain.
 trigger :: TriggerEvent -> MB ()
