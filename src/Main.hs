@@ -46,6 +46,8 @@ commands = M.fromList
         p <- getStringParam 1
         lift $ connect h p
         )
+    , ("guild", cmdGuild)
+    , ("focus", cmdFocus)
     ]
 
 -- TRIGGERS -----------------------------------------------------------
