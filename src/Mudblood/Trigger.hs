@@ -3,7 +3,7 @@
 module Mudblood.Trigger
     ( Trigger
     , (>>>), (|||)
-    , TriggerF (Result, Yield, Fail, RunIO, Echo, Send, GetUserData, PutUserData, PutUI)
+    , TriggerF (Result, Yield, Fail, RunIO, Echo, Send, GetUserData, PutUserData, PutUI, GetMap, PutMap)
     , TriggerResult (TResult, TYield, TFail)
     , TriggerFlow (Permanent, Volatile, (:||:), (:>>:))
     , runTriggerFlow
@@ -20,6 +20,7 @@ import Data.Dynamic (Dynamic)
 import Data.Typeable
 
 import Mudblood.UI
+import Mudblood.Mapper.Map
 
 -- A TriggerFlow is a flow chart of triggers. Triggers can either be Permanent or
 -- Volatile. They can be combined in sequence or parallel.
@@ -105,6 +106,8 @@ data TriggerF i y o = Result o
                     | Send String o
                     | GetUserData (Dynamic -> o)
                     | PutUserData Dynamic o
+                    | GetMap (Map -> o)
+                    | PutMap Map o
                     | PutUI UIAction o
 
 instance Functor (TriggerF i y) where
@@ -117,6 +120,8 @@ instance Functor (TriggerF i y) where
     fmap f (GetUserData g) = GetUserData $ f . g
     fmap f (PutUserData d x) = PutUserData d $ f x
     fmap f (PutUI a x) = PutUI a $ f x
+    fmap f (GetMap g) = GetMap $ f . g
+    fmap f (PutMap d x) = PutMap d $ f x
 
 -- Free monad of trigger functor
 

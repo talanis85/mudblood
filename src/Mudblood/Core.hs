@@ -13,7 +13,7 @@ module Mudblood.Core
     -- * MB primitives
     , command, quit, logger, process, processSend, error
     , connect, sendBinary, modifyTriggers
-    , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData)
+    , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap)
     -- * Events
     -- ** The trigger event type
     , TriggerEvent (LineTEvent, SendTEvent, TelnetTEvent)
@@ -45,6 +45,7 @@ import Mudblood.Telnet
 import Mudblood.Text
 import Mudblood.Trigger
 import Mudblood.Command
+import Mudblood.Mapper.Map
 
 import Debug.Trace
 
@@ -91,6 +92,14 @@ class (Monad m) => MBMonad m where
     modifyUserData :: (Typeable a) => (a -> a) -> m ()
     modifyUserData f = getUserData >>= putUserData . f
 
+    getMap :: m Map
+
+    putMap :: Map -> m ()
+    putMap d = modifyMap (\_ -> d)
+
+    modifyMap :: (Map -> Map) -> m ()
+    modifyMap f = getMap >>= putMap . f
+
 --------------------------------------------------------------------------------------------------
 
 data MBState = MBState {
@@ -98,7 +107,8 @@ data MBState = MBState {
     mbLog :: [String],
     mbTrigger :: Maybe (TriggerFlow TriggerEvent),
     --mbUiValues :: M.Map String UiValue,
-    mbUserData :: Dynamic
+    mbUserData :: Dynamic,
+    mbMap :: Map
 }
 
 -- | Create a new MBState.
@@ -112,7 +122,8 @@ mkMBState triggers user = MBState {
     mbLog = [],
     mbTrigger = triggers,
     --mbUiValues = M.empty,
-    mbUserData = toDyn user
+    mbUserData = toDyn user,
+    mbMap = mapEmpty
     }
 
 data MBConfig = MBConfig {
@@ -270,6 +281,10 @@ instance MBMonad MB where
     putUserDataDynamic d = do
         modify $ \st -> st { mbUserData = d }
 
+    getMap = gets mbMap
+    putMap d = do modify $ \s -> s { mbMap = d }
+                  dispatchUI $ UIUpdateMap d
+
 --------------------------------------------------------------------------------------------------
 
 instance MBMonad (Trigger i y) where
@@ -280,6 +295,9 @@ instance MBMonad (Trigger i y) where
 
     getUserDataDynamic = liftF $ GetUserData id
     putUserDataDynamic d = liftF $ PutUserData d ()
+
+    getMap = liftF $ GetMap id
+    putMap d = liftF $ PutMap d ()
 
 -- | Interpreter for the Trigger Monad
 runTriggerMB :: Trigger i o o -> MB (TriggerResult i o o)
@@ -292,5 +310,5 @@ runTriggerMB (Free (GetUserData g)) = getUserDataDynamic >>= runTriggerMB . g
 runTriggerMB (Free (PutUserData d x)) = putUserDataDynamic d >> runTriggerMB x
 runTriggerMB (Free (PutUI a x)) = ui a >> runTriggerMB x
 runTriggerMB (Free (RunIO action f)) = io action >>= runTriggerMB . f
-
-
+runTriggerMB (Free (GetMap g)) = getMap >>= runTriggerMB . g
+runTriggerMB (Free (PutMap d x)) = putMap d >> runTriggerMB x

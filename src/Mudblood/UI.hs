@@ -1,7 +1,9 @@
 module Mudblood.UI
     ( UIValue (UIStringValue, UIIntValue, UINilValue)
-    , UIAction (UIStatus, UISetValue)
+    , UIAction (UIStatus, UISetValue, UIUpdateMap)
     ) where
+
+import Mudblood.Mapper.Map
 
 data UIValue = UIStringValue String
              | UIIntValue Int
@@ -13,4 +15,5 @@ instance Show UIValue where
     show UINilValue = "NIL"
 
 data UIAction = UIStatus String
+              | UIUpdateMap Map
               | UISetValue String UIValue
