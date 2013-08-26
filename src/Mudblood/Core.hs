@@ -106,7 +106,6 @@ data MBState = MBState {
     mbLinebuffer :: [AttrString],
     mbLog :: [String],
     mbTrigger :: Maybe (TriggerFlow TriggerEvent),
-    --mbUiValues :: M.Map String UiValue,
     mbUserData :: Dynamic,
     mbMap :: Map
 }
@@ -121,7 +120,6 @@ mkMBState triggers user = MBState {
     mbLinebuffer = [],
     mbLog = [],
     mbTrigger = triggers,
-    --mbUiValues = M.empty,
     mbUserData = toDyn user,
     mbMap = mapEmpty
     }
@@ -260,15 +258,6 @@ sendBinary = dispatchSend
 -- | Modify the global TriggerFlow
 modifyTriggers :: (Maybe MBTriggerFlow -> Maybe MBTriggerFlow) -> MB ()
 modifyTriggers f = modify $ \s -> s { mbTrigger = f (mbTrigger s) }
-
-{-
--- | Send a string to the socket. UTF8 will be assumed as encoding.
--- | Set a UI value
-setUiValue :: String -> UiValue -> MB ()
-setUiValue k v = case (k, v) of
-    ("status", UiStringValue str) -> liftF $ MBFUI (MBUIStatus str) ()
-    (k, v) -> liftF $ MBFUI (MBUISetValue k v) ()
--}
 
 instance MBMonad MB where
     send str = sendBinary $ UTF8.encode $ str ++ "\n"
