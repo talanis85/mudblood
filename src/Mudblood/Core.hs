@@ -7,6 +7,7 @@ module Mudblood.Core
     , MBState (mbLinebuffer, mbUserData), mkMBState
     , MBConfig (MBConfig)
     , LogSeverity (LogDebug, LogInfo, LogWarning, LogError)
+    , MBCommand
     -- * The MBF Functor
     , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI)
     -- * MB primitives
@@ -115,7 +116,7 @@ mkMBState triggers user = MBState {
     }
 
 data MBConfig = MBConfig {
-    confCommands :: M.Map String (Command MB)
+    confCommands :: M.Map String MBCommand
 }
 
 data MBF o = forall a. MBFIO (IO a) (a -> o)
@@ -159,6 +160,10 @@ dispatchQuit = liftF $ MBFQuit ()
 
 dispatchUI :: UIAction -> MB ()
 dispatchUI a = liftF $ MBFUI a ()
+
+--------------------------------------------------------------------------------------------------
+
+type MBCommand = Command MB
 
 --------------------------------------------------------------------------------------------------
 
