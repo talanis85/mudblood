@@ -37,7 +37,7 @@ import Network.Socket hiding (send, sendTo, recv, recvFrom)
 import Network.Socket.ByteString
 
 -- | Telneg commands
-data TelnetCommand = CMD_UNKNOWN
+data TelnetCommand = CMD_UNKNOWN Word8
                    | CMD_EOR
                    | CMD_WILL
                    | CMD_WONT
@@ -58,7 +58,7 @@ toTelnetCommand x = case x of
     250 -> CMD_SB
     240 -> CMD_SE
     239 -> CMD_EOR
-    _ -> CMD_UNKNOWN
+    x -> CMD_UNKNOWN (fromIntegral x)
 
 fromTelnetCommand :: (Integral a) => TelnetCommand -> a
 fromTelnetCommand cmd = case cmd of
@@ -70,10 +70,10 @@ fromTelnetCommand cmd = case cmd of
     CMD_SB   -> 250
     CMD_SE   -> 240
     CMD_EOR  -> 239
-    CMD_UNKNOWN -> 0
+    CMD_UNKNOWN x -> (fromIntegral x)
 
 -- | Telneg options
-data TelnetOption = OPT_UNKNOWN
+data TelnetOption = OPT_UNKNOWN Word8
                   | OPT_EOR
                   | OPT_NAWS
     deriving (Show, Eq)
@@ -83,13 +83,13 @@ toTelnetOption x = case x of
     25 -> OPT_EOR
     31 -> OPT_NAWS
     -- etc.
-    _ -> OPT_UNKNOWN
+    x -> OPT_UNKNOWN (fromIntegral x)
 
 fromTelnetOption :: (Integral a) => TelnetOption -> a
 fromTelnetOption opt = case opt of
     OPT_EOR -> 25
     OPT_NAWS -> 31
-    OPT_UNKNOWN -> 0
+    OPT_UNKNOWN x -> (fromIntegral x)
 
 -- | A telnet negotiation consists of a command, an option and
 --   some binary data.
