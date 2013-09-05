@@ -33,6 +33,9 @@ executable mudblood
                         free, json, fgl
     hs-source-dirs:     src
 
+    if os(windows)
+        ghc-options:    -optl-mwindows
+
     if !os(windows) && flag(vty)
         build-depends: unix, terminfo, ansi-terminal, vty
     if flag(gtk)
