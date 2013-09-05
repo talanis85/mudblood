@@ -472,7 +472,7 @@ renderTableWidget style tab = do
     C.selectFontFace "monospace" C.FontSlantNormal C.FontWeightNormal
     C.setFontSize 12.0
 
-    forM_ (transpose tab) $ \col -> do
+    forM_ (transpose $ rectify "" (maximum $ map length tab) tab) $ \col -> do
         C.save
         widths <- forM col $ \cell -> do
             C.save
@@ -487,3 +487,6 @@ renderTableWidget style tab = do
 
     ext <- C.textExtents "A"
     return $ (fromIntegral $ length tab) * (C.textExtentsHeight ext)
+  where
+    rectify elem len mat = map (fill elem len) mat
+    fill elem len l = l ++ (take (max 0 (len - length l)) $ repeat elem)
