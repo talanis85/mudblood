@@ -144,6 +144,7 @@ telnetReceive ev = do
     case ev of
         DataEvent chars  -> do (p, _) <- mb $ process (scrPrompt st) chars defaultAttr -- TODO: where to save current attr?
                                modify $ \st -> st { scrPrompt = p }
+                               updatePrompt
         CloseEvent          -> mb $ echo "Connection closed"
         TelnetEvent neg     -> do
                                handleTelneg neg
@@ -165,23 +166,61 @@ screen = liftIO G.mainGUI
 
 -- | Append a line to the main line buffer
 appendToMainBuffer :: AttrString -> Screen ()
-appendToMainBuffer astr = do mapM_ appendChunk (groupAttrString $ untab 8 astr)
-                             ctrls <- askControls
-                             endIter <- liftIO $ G.textBufferGetEndIter (ctlMainBuffer ctrls)
-                             liftIO $ G.textBufferInsert (ctlMainBuffer ctrls) endIter "\n"
-    where appendChunk :: (String, Attr) -> Screen ()
-          appendChunk (s, a) = do
-            ctrls <- askControls
-            let mainbuf = (ctlMainBuffer ctrls)
-            liftIO $ do startIter <- G.textBufferGetEndIter mainbuf
-                        startOffset <- G.textIterGetOffset startIter
-                        G.textBufferInsert mainbuf startIter s
-                        endOffset <- G.textBufferGetEndIter mainbuf >>= G.textIterGetOffset
-                        when (tagNameForAttr a /= "") $ do
-                            startIter' <- G.textBufferGetIterAtOffset mainbuf startOffset
-                            endIter' <- G.textBufferGetIterAtOffset mainbuf endOffset
-                            G.textBufferApplyTagByName mainbuf (tagNameForAttr a) startIter' endIter'
-                            return ()
+appendToMainBuffer astr = do
+    ctrls <- askControls
+    let mainbuf = ctlMainBuffer ctrls
+
+    -- Remove old prompt
+    endIter <- liftIO $ G.textBufferGetEndIter mainbuf
+    promptMark <- liftIO $ G.textBufferGetMark mainbuf "prompt"
+    promptIter <- case promptMark of
+        Nothing -> do
+                   liftIO $ G.textBufferCreateMark mainbuf (Just "prompt") endIter True
+                   return endIter
+        Just promptMark' -> liftIO $ G.textBufferGetIterAtMark mainbuf promptMark'
+    liftIO $ G.textBufferDelete mainbuf promptIter endIter
+
+    mapM_ appendChunk (groupAttrString $ untab 8 astr)
+
+    endIter <- liftIO $ G.textBufferGetEndIter mainbuf
+    liftIO $ G.textBufferInsert mainbuf endIter $ "\n"
+    endIter <- liftIO $ G.textBufferGetEndIter mainbuf
+    liftIO $ G.textBufferMoveMarkByName mainbuf "prompt" endIter
+  where
+    appendChunk :: (String, Attr) -> Screen ()
+    appendChunk (s, a) = do
+      ctrls <- askControls
+      let mainbuf = (ctlMainBuffer ctrls)
+      liftIO $ do startIter <- G.textBufferGetEndIter mainbuf
+                  startOffset <- G.textIterGetOffset startIter
+                  G.textBufferInsert mainbuf startIter s
+                  endOffset <- G.textBufferGetEndIter mainbuf >>= G.textIterGetOffset
+                  when (tagNameForAttr a /= "") $ do
+                      startIter' <- G.textBufferGetIterAtOffset mainbuf startOffset
+                      endIter' <- G.textBufferGetIterAtOffset mainbuf endOffset
+                      G.textBufferApplyTagByName mainbuf (tagNameForAttr a) startIter' endIter'
+                      return ()
+
+updatePrompt :: Screen ()
+updatePrompt = do
+    ctrls <- askControls
+    let mainbuf = ctlMainBuffer ctrls
+
+    -- Remove old prompt
+    endIter <- liftIO $ G.textBufferGetEndIter mainbuf
+    promptMark <- liftIO $ G.textBufferGetMark mainbuf "prompt"
+    promptIter <- case promptMark of
+        Nothing -> do
+                   liftIO $ G.textBufferCreateMark mainbuf (Just "prompt") endIter True
+                   return endIter
+        Just promptMark' -> liftIO $ G.textBufferGetIterAtMark mainbuf promptMark'
+    liftIO $ G.textBufferDelete mainbuf promptIter endIter
+
+    prompt <- gets scrPrompt
+    markedPrompt <- gets scrMarkedPrompt
+
+    endIter <- liftIO $ G.textBufferGetEndIter mainbuf
+    liftIO $ G.textBufferInsert mainbuf endIter $ markedPrompt ++ prompt
 
 execUIAction :: UIAction -> Screen ()
 execUIAction action = case action of
@@ -360,7 +399,9 @@ handleKey key = do
                                      case text of
                                         (':':cmd) -> mb $ command cmd
                                         _ -> do
-                                             mb $ echoA (setFg Yellow (toAttrString text))
+                                             mb $ echoA $ (toAttrString $ (scrMarkedPrompt st) ++ (scrPrompt st))
+                                                          `mappend`
+                                                          (setFg Yellow (toAttrString text))
                                              mb $ processSend text
                                      liftIO $ G.set (ctlMainInput ctrls) [ G.entryText := "" ]
                                      updateWidgets
@@ -413,8 +454,9 @@ handleTelneg neg = case neg of
     TelnetNeg (Just CMD_WILL) (Just OPT_EOR) [] ->
         sendSocket $ telnetNegToBytes $ TelnetNeg (Just CMD_DO) (Just OPT_EOR) []        
     -- EOR
-    TelnetNeg (Just CMD_EOR) Nothing [] ->
+    TelnetNeg (Just CMD_EOR) Nothing [] -> do
         modify $ \st -> st { scrPrompt = "", scrMarkedPrompt = scrPrompt st }
+        updatePrompt
     {-
     -- NAWS (defunct)
     TelnetNeg (Just CMD_DO) (Just OPT_NAWS) [] -> do
