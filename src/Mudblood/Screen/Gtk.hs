@@ -15,6 +15,7 @@ import Data.Word
 import Data.Monoid
 import Data.Dynamic
 import Data.IORef
+import Data.List
 import qualified Data.Map as M
 import qualified Data.Trie as Trie
 
@@ -29,7 +30,8 @@ import System.IO
 import qualified Graphics.UI.Gtk as G
 import qualified Graphics.UI.Gtk.Builder as GB
 import Graphics.UI.Gtk (AttrOp (..), on, after)
-import Graphics.Rendering.Pango as P
+import qualified Graphics.Rendering.Pango as P
+import qualified Graphics.Rendering.Cairo as C
 
 import qualified Codec.Binary.UTF8.String as UTF8
 
@@ -67,7 +69,7 @@ data ScreenState = ScreenState {
     scrSocket :: Maybe TelnetSocket,
 
     --scrMode :: Mode,
-
+    
     scrQuit :: Bool
     }
 
@@ -79,6 +81,7 @@ data ScreenControls = ScreenControls
     , ctlStatusKeyseq   :: G.Label
     , ctlStatusUser     :: G.Label
     , ctlStatusSystem   :: G.Label
+    , ctlWidgetArea     :: G.DrawingArea
     }
 
 newtype Screen a = Screen (ReaderT (IORef ScreenState, ScreenControls) IO a)
@@ -145,6 +148,7 @@ telnetReceive ev = do
         TelnetEvent neg     -> do
                                handleTelneg neg
                                mb $ logger LogDebug $ show neg
+    updateWidgets
 
 -- | Send a byte array to the socket (if existent)
 sendSocket :: [Word8] -> Screen ()
@@ -235,6 +239,7 @@ initUI path stref = do
     statusKeyseq    <- GB.builderGetObject builder G.castToLabel        "statusKeyseq"
     statusUser      <- GB.builderGetObject builder G.castToLabel        "statusUser"
     statusSystem    <- GB.builderGetObject builder G.castToLabel        "statusSystem"
+    widgetArea      <- GB.builderGetObject builder G.castToDrawingArea  "widgetArea"
 
     let controls = ScreenControls
             { ctlMainView       = mainView
@@ -244,13 +249,14 @@ initUI path stref = do
             , ctlStatusKeyseq   = statusKeyseq
             , ctlStatusUser     = statusUser
             , ctlStatusSystem   = statusSystem
+            , ctlWidgetArea     = widgetArea
             }
 
     monoFont <- P.fontDescriptionFromString "monospace"
 
     G.widgetModifyFont mainView $ Just monoFont
-    G.widgetModifyFg mainView G.StateNormal $ P.Color 60000 60000 60000
-    G.widgetModifyBase mainView G.StateNormal $ P.Color 0 0 0
+    --G.widgetModifyText mainView G.StateNormal $ P.Color 60000 60000 60000
+    --G.widgetModifyBase mainView G.StateNormal $ P.Color 0 0 0
 
     G.widgetModifyFont mainInput $ Just monoFont
 
@@ -297,6 +303,11 @@ initUI path stref = do
                 sendSocket $ telnegToBytes $ telnetNegNaws w h
             return False
     -}
+
+    widgetArea `on` G.exposeEvent $ do
+        drawwin <- G.eventWindow
+        liftIO $ runScreen controls stref $ drawWidgets drawwin
+        return False
 
     -- Quit when the window is closed
     window `on` G.deleteEvent $ liftIO G.mainQuit >> return False
@@ -352,6 +363,7 @@ handleKey key = do
                                              mb $ echoA (setFg Yellow (toAttrString text))
                                              mb $ processSend text
                                      liftIO $ G.set (ctlMainInput ctrls) [ G.entryText := "" ]
+                                     updateWidgets
                                      return True
                            _ -> return False
 
@@ -413,3 +425,65 @@ handleTelneg neg = case neg of
     -- All other telnegs are just printed
     _ ->
         mb $ echoA $ (setFg Magenta $ toAttrString $ show neg)
+
+------------------------------------------------------------------------------
+
+updateWidgets :: Screen ()
+updateWidgets = do
+    ctls <- askControls
+    liftIO $ G.widgetQueueDraw (ctlWidgetArea ctls)
+
+drawWidgets :: G.DrawWindow -> Screen ()
+drawWidgets win = do
+    widgets <- mb getWidgets
+    ctls <- askControls
+    style <- liftIO $ G.rcGetStyle (ctlWidgetArea ctls)
+
+    actions <- forM widgets $ \w -> do
+        case w of
+            UIWidgetText poll -> mb poll >>= return . (renderTextWidget style)
+            UIWidgetTable poll -> mb poll >>= return . (renderTableWidget style)
+
+    liftIO $ G.renderWithDrawable win $ do
+        C.translate 8.0 14.0
+        forM_ actions $ \a -> do
+            C.save
+            height <- a
+            C.restore
+            C.translate 0 $ height + 10.0
+
+renderTextWidget :: G.Style -> String -> C.Render Double
+renderTextWidget style str = do
+    fgColor <- liftIO $ G.styleGetForeground style G.StateNormal
+    G.setSourceColor fgColor
+    C.selectFontFace "monospace" C.FontSlantNormal C.FontWeightNormal
+    C.setFontSize 12.0
+
+    C.textPath str
+    C.fill
+
+    ext <- C.textExtents str
+    return $ C.textExtentsHeight ext
+
+renderTableWidget :: G.Style -> [[String]] -> C.Render Double
+renderTableWidget style tab = do
+    fgColor <- liftIO $ G.styleGetForeground style G.StateNormal
+    G.setSourceColor fgColor
+    C.selectFontFace "monospace" C.FontSlantNormal C.FontWeightNormal
+    C.setFontSize 12.0
+
+    forM_ (transpose tab) $ \col -> do
+        C.save
+        widths <- forM col $ \cell -> do
+            C.save
+            C.textPath cell
+            C.fill
+            C.restore
+            C.translate 0.0 12.0
+            ext <- C.textExtents cell
+            return $ C.textExtentsWidth ext
+        C.restore
+        C.translate (maximum widths + 5.0) 0.0
+
+    ext <- C.textExtents "A"
+    return $ (fromIntegral $ length tab) * (C.textExtentsHeight ext)

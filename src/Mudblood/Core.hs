@@ -19,6 +19,9 @@ module Mudblood.Core
     , TriggerEvent (LineTEvent, SendTEvent, TelnetTEvent)
     -- ** Convenient type aliases
     , MBTrigger, MBTriggerFlow
+    -- * Widgets
+    , UIWidget (..)
+    , getWidgets, modifyWidgets
     ) where
 
 import Prelude hiding (catch, error)
@@ -107,7 +110,8 @@ data MBState = MBState {
     mbLog :: [String],
     mbTrigger :: Maybe (TriggerFlow TriggerEvent),
     mbUserData :: Dynamic,
-    mbMap :: Map
+    mbMap :: Map,
+    mbWidgets :: [UIWidget]
 }
 
 -- | Create a new MBState.
@@ -121,7 +125,8 @@ mkMBState triggers user = MBState {
     mbLog = [],
     mbTrigger = triggers,
     mbUserData = toDyn user,
-    mbMap = mapEmpty
+    mbMap = mapEmpty,
+    mbWidgets = []
     }
 
 data MBConfig = MBConfig {
@@ -301,3 +306,18 @@ runTriggerMB (Free (PutUI a x)) = ui a >> runTriggerMB x
 runTriggerMB (Free (RunIO action f)) = io action >>= runTriggerMB . f
 runTriggerMB (Free (GetMap g)) = getMap >>= runTriggerMB . g
 runTriggerMB (Free (PutMap d x)) = putMap d >> runTriggerMB x
+
+--------------------------------------------------------------------------------------------------
+
+-- | Widgets are small pieces of information to be displayed by the screen.
+data UIWidget = UIWidgetText (MB String)        -- ^ A singe line of text
+              | UIWidgetTable (MB [[String]])   -- ^ A table of textual cells
+
+-- | Get the widget list
+getWidgets :: MB [UIWidget]
+getWidgets = gets mbWidgets >>= return
+
+-- | Modify the widget list
+modifyWidgets :: ([UIWidget] -> [UIWidget]) -> MB ()
+modifyWidgets f = modify $ \s -> s { mbWidgets = f (mbWidgets s) }
+

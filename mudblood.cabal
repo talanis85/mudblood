@@ -36,4 +36,4 @@ executable mudblood
     if !os(windows) && flag(vty)
         build-depends: unix, terminfo, ansi-terminal, vty
     if flag(gtk)
-        build-depends: gtk, pango
+        build-depends: gtk, pango, cairo
