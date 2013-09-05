@@ -8,6 +8,9 @@ module Mudblood.Contrib.MG.State
     , module Mudblood.Contrib.DynTrigger
     -- * Commands to modify the state
     , cmdFocus, cmdGuild
+    -- * Widgets
+    , mkMGStatWidgets
+    , updateWidgetList
     ) where
 
 import Data.Typeable
@@ -85,4 +88,37 @@ cmdGuild = Command ["name"] $ do
     arg <- getStringParam 0
     case readGuild arg of
         Nothing -> fail $ "Unbekannte Gilde: " ++ arg
-        Just g  -> lift $ modifyUserData $ \s -> s { mgGuild = g }
+        Just g  -> do
+                   lift $ modifyUserData $ \s -> s { mgGuild = g }
+                   lift $ updateWidgetList
+
+updateWidgetList :: MB ()
+updateWidgetList = do
+    guild <- getUserData >>= return . mgGuild
+    modifyWidgets $ \_ ->
+        [ UIWidgetText $ return "--- MorgenGrauen ---"
+        ] ++ mkMGStatWidgets
+          ++ case guild of
+                MGGuildZauberer -> mkMGZaubererWidgets (getUserData >>= return . mgZaubererStats)
+                _ -> []
+
+mkMGStatWidgets =
+    [ UIWidgetTable $ do
+        stats <- getUserData >>= return . mgStats
+        return
+            [ [ "LP:", (show $ mgStatLP stats) ++ " (" ++ (show $ mgStatMLP stats) ++ ")" ]
+            , [ "KP:", (show $ mgStatKP stats) ++ " (" ++ (show $ mgStatMKP stats) ++ ")" ]
+            , [ "Vorsicht:", (show $ mgStatVO stats) ]
+            , [ "Fluchtrichtung:", (show $ mgStatFR stats) ]
+            , [ "Gift:", (showGift $ mgStatG stats) ]
+            , [ "Blind:", (showBool $ mgStatB stats) ]
+            , [ "Taub:", (showBool $ mgStatT stats) ]
+            , [ "Frosch:", (showBool $ mgStatF stats) ]
+            ]
+    ]
+  where
+    showGift 0 = "Nein"
+    showGift _ = "Ja"
+
+    showBool True = "Ja"
+    showBool False = "Nein"

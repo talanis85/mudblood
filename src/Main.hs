@@ -101,15 +101,7 @@ boot =
     
     mapM_ (\(a,b) -> bind a (mb b)) tanjianBindings
 
-    mb $ modifyWidgets $ \_ ->
-        [ UIWidgetText $ return "Hallo Welt"
-        , UIWidgetTable $ do
-            stats <- getUserData >>= return . mgStats
-            return
-                [ [ "LP:", show $ mgStatLP stats ]
-                , [ "KP:", show $ mgStatKP stats ]
-                ]
-        ]
+    mb $ updateWidgetList
 
     screen
 
