@@ -82,6 +82,7 @@ data ScreenControls = ScreenControls
     , ctlStatusUser     :: G.Label
     , ctlStatusSystem   :: G.Label
     , ctlWidgetArea     :: G.DrawingArea
+    , ctlMapArea        :: G.DrawingArea
     }
 
 newtype Screen a = Screen (ReaderT (IORef ScreenState, ScreenControls) IO a)
@@ -279,6 +280,7 @@ initUI path stref = do
     statusUser      <- GB.builderGetObject builder G.castToLabel        "statusUser"
     statusSystem    <- GB.builderGetObject builder G.castToLabel        "statusSystem"
     widgetArea      <- GB.builderGetObject builder G.castToDrawingArea  "widgetArea"
+    mapArea         <- GB.builderGetObject builder G.castToDrawingArea  "mapArea"
 
     let controls = ScreenControls
             { ctlMainView       = mainView
@@ -289,6 +291,7 @@ initUI path stref = do
             , ctlStatusUser     = statusUser
             , ctlStatusSystem   = statusSystem
             , ctlWidgetArea     = widgetArea
+            , ctlMapArea        = mapArea
             }
 
     monoFont <- P.fontDescriptionFromString "monospace"
@@ -346,6 +349,11 @@ initUI path stref = do
     widgetArea `on` G.exposeEvent $ do
         drawwin <- G.eventWindow
         liftIO $ runScreen controls stref $ drawWidgets drawwin
+        return False
+
+    mapArea `on` G.exposeEvent $ do
+        drawwin <- G.eventWindow
+        liftIO $ runScreen controls stref $ drawMap drawwin
         return False
 
     -- Quit when the window is closed
@@ -531,3 +539,6 @@ renderTableWidget style tab = do
   where
     rectify elem len mat = map (fill elem len) mat
     fill elem len l = l ++ (take (max 0 (len - length l)) $ repeat elem)
+
+drawMap :: G.DrawWindow -> Screen ()
+drawMap win = return ()
