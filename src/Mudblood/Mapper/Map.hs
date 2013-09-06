@@ -8,14 +8,18 @@ module Mudblood.Mapper.Map
     , ExitData (..)
     -- * Loading maps
     , mapEmpty, mapFromString, mapFromFile
-    -- * Paths
+    -- * Querying a map
+    , currentRoom
     , shortestPath
+    -- * Handling User Data
+    , findUserData
     ) where
 
 import Text.JSON
 import Text.JSON.Types
 
 import qualified Data.Map as M
+import Data.List
 
 import Data.Graph.Inductive
 import Data.Graph.Inductive.Tree
@@ -23,7 +27,7 @@ import Data.Graph.Inductive.Tree
 type MapGraph = Gr RoomData ExitData
 
 data RoomData = RoomData
-    { roomUserData :: M.Map String JSValue
+    { roomUserData :: M.Map String UserData
     }
   deriving (Show)
 
@@ -36,13 +40,13 @@ newtype JSRoom = JSRoom { getJSRoom :: LNode RoomData }
 data ExitData = ExitData
     { exitLayer :: String
     , exitKey :: String
-    , exitUserData :: M.Map String JSValue
+    , exitUserData :: M.Map String UserData
     }
   deriving (Show)
 
 newtype JSExit = JSExit { getJSExit :: LEdge ExitData }
 
-newtype JSUserData = JSUserData { getJSUserData :: M.Map String JSValue }
+newtype JSUserData = JSUserData { getJSUserData :: M.Map String UserData }
 
 data Map = Map
     { mapGraph :: MapGraph
@@ -97,7 +101,7 @@ instance JSON JSRoom where
     readJSON _ = fail "Expected object"
 
     showJSON r = showJSON $ toJSObject [ ("id", showJSON $ fst (getJSRoom r))
-                                       , ("userdata", showJSON $ roomUserData $ snd $ getJSRoom r)
+                                       , ("userdata", showJSON $ JSUserData $ roomUserData $ snd $ getJSRoom r)
                                        ]
 
 instance JSON JSExit where
@@ -122,20 +126,56 @@ instance JSON JSExit where
                  in showJSON $ toJSObject [ ("src", showJSON src)
                                           , ("dest", showJSON dest)
                                           , ("layer", showJSON $ exitLayer d)
-                                          , ("userdata", showJSON $ exitUserData d)
+                                          , ("userdata", showJSON $ JSUserData $ exitUserData d)
                                           , ("key", showJSON $ exitKey d)
                                           ]
 
 instance JSON JSUserData where
-    readJSON (JSObject o) = return $ JSUserData $ M.fromList $ fromJSObject o
+    readJSON (JSObject o) = return $ JSUserData $ M.map toUserData $ M.fromList $ fromJSObject o
 
     readJSON _ = fail "Expected object"
 
-    showJSON d = showJSON $ toJSObject $ M.toList (getJSUserData d)
+    showJSON d = showJSON $ toJSObject $ M.toList $ M.map fromUserData (getJSUserData d)
+
+data UserData = UserDataNull
+              | UserDataBool Bool
+              | UserDataRational Rational
+              | UserDataString String
+              | UserDataArray [UserData]
+
+instance Show UserData where
+    show UserDataNull = "<null>"
+    show (UserDataBool v) = show v
+    show (UserDataRational v) = show v
+    show (UserDataString v) = v
+    show (UserDataArray v) = concat $ intersperse "," (map show v)
+
+toUserData JSNull = UserDataNull
+toUserData (JSBool v) = UserDataBool v
+toUserData (JSRational _ v) = UserDataRational v
+toUserData (JSString v) = UserDataString $ fromJSString v
+toUserData (JSArray v) = UserDataArray $ map toUserData v
+toUserData _ = UserDataNull
+
+fromUserData UserDataNull = JSNull
+fromUserData (UserDataBool v) = JSBool v
+fromUserData (UserDataRational v) = JSRational True v
+fromUserData (UserDataString v) = JSString $ toJSString v
+fromUserData (UserDataArray v) = JSArray $ map fromUserData v
 
 -- | Map a function over the graph of a map.
 mapMapGraph :: (MapGraph -> MapGraph) -> Map -> Map
 mapMapGraph f g = g { mapGraph = f (mapGraph g) }
+
+currentRoom :: Map -> (Int, RoomData)
+currentRoom m = let cur = mapCurrent m
+                    dat = case lab (mapGraph m) cur of
+                            Just dat' -> dat'
+                            Nothing   -> mkRoomData
+                in (cur, dat)
+
+findUserData :: String -> M.Map String UserData -> UserData
+findUserData = M.findWithDefault UserDataNull
 
 -- | Shortest path from one room to another.
 shortestPath :: (Real w) => Map -> (ExitData -> w) -> Int -> Int -> [String]
