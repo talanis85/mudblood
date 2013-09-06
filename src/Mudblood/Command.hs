@@ -1,10 +1,8 @@
 module Mudblood.Command
-    ( ArgType (IntType, StringType)
-    , Arg (IntArg, StringArg)
-    , CommandMonad
+    ( CommandMonad
     , Command (Command, cmdArgNames, cmdAction)
     , MonadTrans (lift)
-    , getIntParam, getStringParam, getIdParam
+    , popIntParam, popStringParam
     , runCommand
     , parseCommand
     ) where
@@ -14,22 +12,15 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language (haskellDef)
 
 import Control.Monad.Trans
-import Control.Monad.Reader
+import Control.Monad.State
 import Control.Monad.Trans.Either
-
-data ArgType = IntType | StringType | IdType
-
-data Arg = IntArg Int
-         | StringArg String
-         | IdArg String
-    deriving (Show)
 
 data Command m = Command {
     cmdArgNames :: [String],
     cmdAction :: CommandMonad m ()
 }
 
-data CommandMonad m a = CommandMonad (EitherT String (ReaderT [Arg] m) a)
+data CommandMonad m a = CommandMonad (EitherT String (StateT [String] m) a)
 
 instance MonadTrans CommandMonad where
     lift x = CommandMonad (lift $ lift x)
@@ -42,70 +33,47 @@ instance (Monad m) => Monad (CommandMonad m) where
         unwrap f a = let (CommandMonad x) = f a
                      in x
 
-runCommand :: (Monad m) => CommandMonad m a -> [Arg] -> m (Either String ())
+parseCommand :: String -> Either String (String, [String])
+parseCommand s = case parse pCommand "" s of
+    Left e -> Left (show e)
+    Right r -> Right r
+
+runCommand :: (Monad m) => CommandMonad m a -> [String] -> m (Either String ())
 runCommand (CommandMonad cmd) args = do
-    r <- runReaderT (runEitherT cmd) args
+    (r, _) <- runStateT (runEitherT cmd) args
     case r of
         Left s -> return $ Left s
         Right _ -> return $ Right ()
 
-getIntParam :: (Monad m) => Int -> CommandMonad m Int
-getIntParam index = do
-    r <- (CommandMonad $ lift ask)
-    if length r <= index then fail ("Too few arguments")
-                         else case (r !! index) of
-                            IntArg x -> return x
-                            _        -> fail ("Argument #" ++ (show index) ++ " must be integer")
+popIntParam :: (Monad m) => CommandMonad m Int
+popIntParam = do
+    r <- CommandMonad $ lift get
+    case r of
+        []   -> fail "Too few arguments"
+        x:xs -> CommandMonad (lift $ put xs) >> parseArg pInteger x
 
-getStringParam :: (Monad m) => Int -> CommandMonad m String
-getStringParam index = do
-    r <- (CommandMonad $ lift ask)
-    if length r <= index then fail ("Too few arguments")
-                         else case (r !! index) of
-                            StringArg x -> return x
-                            _           -> fail ("Argument #" ++ (show index) ++ " must be string")
-
-getIdParam :: (Monad m) => Int -> CommandMonad m String
-getIdParam index = do
-    r <- (CommandMonad $ lift ask)
-    if length r <= index then fail ("Too few arguments")
-                         else case (r !! index) of
-                            IdArg x -> return x
-                            _       -> fail ("Argument #" ++ (show index) ++ " must be identifier")
-
-parseCommand :: String -> Either String (String, [Arg])
-parseCommand s = case parse p_command "" s of
-    Left e -> Left (show e)
-    Right r -> Right r
-
--- The command parser
+popStringParam :: (Monad m) => CommandMonad m String
+popStringParam = do
+    r <- CommandMonad $ lift get
+    case r of
+        []   -> fail "Too few arguments"
+        x:xs -> CommandMonad (lift $ put xs) >> parseArg pString x
 
 lexer = P.makeTokenParser haskellDef
 
-p_command = do
-    command <- p_commandName
-    args <- option [] $ skipMany1 space >> p_args
+parseArg parser str = either (fail . show) return $ parse parser "" str
+
+pInteger = P.integer lexer >>= return . fromIntegral
+pString = many anyChar
+
+pCommand = do
+    name <- many letter
+    args <- (many1 space >> pArgList) <|> return []
     eof
-    return (command, args)
+    return (name, args)
 
-p_commandName = many1 letter
+pArgList = pArg `sepBy` (many1 (oneOf " \t\n"))
 
---p_args = p_arg `sepBy1` space
-p_args = many1 p_arg
-
-p_arg = p_id <|> p_integer <|> p_string
-
-p_integer =
-    do
-    d <- (P.integer lexer)
-    return $ IntArg (fromIntegral d)
-
-p_string =
-    do
-    s <- (P.stringLiteral lexer)
-    return $ StringArg s
-
-p_id =
-    do
-    s <- (P.identifier lexer)
-    return $ IdArg s
+pArg = try (between (char '"') (char '"') (many $ noneOf "\""))
+       <|>
+       many (noneOf " \t\n")

@@ -23,23 +23,23 @@ import Mudblood.Mapper.Walk
 
 commands = M.fromList
     [ ("echo", Command ["text"] $ do
-        x <- getStringParam 0
+        x <- popStringParam
         lift $ echoA $ fst $ decode x defaultAttr
         )
     , ("quit", Command [] $ do
         lift quit
         )
     , ("connect", Command ["host", "port"] $ do
-        h <- getStringParam 0
-        p <- getStringParam 1
+        h <- popStringParam
+        p <- popStringParam
         lift $ connect h p
         )
     , ("guild", cmdGuild)
     , ("focus", cmdFocus)
     , ("walk", Command ["source", "destination"] $ do
         map <- lift $ getMap
-        src <- getIntParam 0
-        dest <- getIntParam 1
+        src <- popIntParam
+        dest <- popIntParam
         case shortestPath map (const 1) src dest of
             []           -> fail "Path not found"
             (first:path) -> do
@@ -47,7 +47,7 @@ commands = M.fromList
                             lift $ send first
         )
     , ("loadmap", Command ["filename"] $ do
-        filename <- getStringParam 0
+        filename <- popStringParam
         map <- lift $ io $ mapFromFile filename
         case map of
             Just map' -> lift $ putMap map'

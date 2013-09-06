@@ -73,14 +73,14 @@ modifyZaubererStats f = modifyState (\x -> x { mgZaubererStats = (f $ mgZauberer
 
 cmdFocus :: MBCommand
 cmdFocus = Command ["name"] $ do
-    arg <- getStringParam 0
+    arg <- popStringParam
     case arg of
         "" -> lift $ modifyUserData $ \s -> s { mgFocus = Nothing }
         f  -> lift $ modifyUserData $ \s -> s { mgFocus = Just f }
 
 cmdGuild :: MBCommand
 cmdGuild = Command ["name"] $ do
-    arg <- getStringParam 0
+    arg <- popStringParam
     case readGuild arg of
         Nothing -> fail $ "Unbekannte Gilde: " ++ arg
         Just g  -> do
