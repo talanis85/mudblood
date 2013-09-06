@@ -2,7 +2,7 @@ module Mudblood.Command
     ( CommandMonad
     , Command (Command, cmdArgNames, cmdAction)
     , MonadTrans (lift)
-    , popIntParam, popStringParam
+    , popIntParam, popStringParam, popBoolParam
     , runCommand
     , parseCommand
     ) where
@@ -59,12 +59,31 @@ popStringParam = do
         []   -> fail "Too few arguments"
         x:xs -> CommandMonad (lift $ put xs) >> parseArg pString x
 
+popBoolParam :: (Monad m) => CommandMonad m Bool
+popBoolParam = do
+    r <- CommandMonad $ lift get
+    case r of
+        []   -> fail "Too few arguments"
+        x:xs -> CommandMonad (lift $ put xs) >> parseArg pBool x
+
 lexer = P.makeTokenParser haskellDef
 
-parseArg parser str = either (fail . show) return $ parse parser "" str
+parseArg parser str = either (fail . show) return $ parse parser' "" str
+    where parser' = do result <- parser
+                       eof
+                       return result
 
 pInteger = P.integer lexer >>= return . fromIntegral
 pString = many anyChar
+pBool = ((    (try $ string "yes")
+         <|> (try $ string "ja")
+         <|> (try $ string "true")
+        ) >> return True)
+        <|>
+        ((    (try $ string "no")
+         <|> (try $ string "nein")
+         <|> (try $ string "false")
+        ) >> return False)
 
 pCommand = do
     name <- many letter
