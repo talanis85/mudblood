@@ -29,20 +29,6 @@ commands = M.fromList
     , ("quit", Command [] $ do
         lift quit
         )
-    , ("triggers", Command ["name", "trigger-type", "arguments", "response", "arguments"] $ do
-        trigname <- getStringParam 0
-        trigtype <- getIdParam 1
-        step1 <- case trigtype of
-            "recv" -> do exp <- getStringParam 2
-                         return $ guardLineEvent >>> (\x -> guard (x =~ exp) >> return [x])
-            _ -> fail "Invalid trigger type"
-        resptype <- getIdParam 3
-        step2 <- case resptype of
-            "send" -> do dat <- getStringParam 4
-                         return $ \x -> send dat >> return [LineTEvent x]
-            _ -> fail "Invalid response type"
-        lift $ modifyUserData $ \st -> st { mgDynTriggers = addDynTrigger (mgDynTriggers st) trigname (step1 >>> step2) }
-        )
     , ("connect", Command ["host", "port"] $ do
         h <- getStringParam 0
         p <- getStringParam 1
@@ -71,11 +57,7 @@ commands = M.fromList
 
 -- TRIGGERS -----------------------------------------------------------
 
-dynTriggers = Permanent $ \x -> do
-    st <- getState
-    runDynTriggers (mgDynTriggers st) x
-
-triggers = fightColorizer :>>: zaubererreportTrigger defaultZaubererStatus :>>: colorTriggers :>>: dynTriggers :>>: moveTrigger
+triggers = fightColorizer :>>: zaubererreportTrigger defaultZaubererStatus :>>: colorTriggers :>>: moveTrigger
 
 tanjianBindings = [ ([KF1],  spell "meditation")
                   , ([KF2],  spell "kokoro")

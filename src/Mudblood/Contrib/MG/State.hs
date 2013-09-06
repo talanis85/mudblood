@@ -5,7 +5,6 @@ module Mudblood.Contrib.MG.State
     , modifyStats
     , modifyTanjianStats, modifyZaubererStats
     , newMGState, modifyState, getState
-    , module Mudblood.Contrib.DynTrigger
     -- * Commands to modify the state
     , cmdFocus, cmdGuild
     -- * Widgets
@@ -17,7 +16,6 @@ import Data.Typeable
 import Data.Dynamic
 
 import Mudblood
-import Mudblood.Contrib.DynTrigger
 
 import Mudblood.Contrib.MG.Gilden
 
@@ -25,7 +23,6 @@ data MGState = MGState
     { mgStats         :: MGStats
     , mgTanjianStats  :: MGTanjianStats
     , mgZaubererStats :: MGZaubererStats
-    , mgDynTriggers   :: DynTriggerTable
 
     , mgGuild         :: MGGuild
     , mgFocus         :: Maybe String
@@ -60,16 +57,14 @@ newMGState = MGState
         }
     , mgTanjianStats    = mkMGTanjianStats
     , mgZaubererStats   = mkMGZaubererStats
-    , mgDynTriggers     = mkDynTriggerTable
 
     , mgGuild           = MGGuildAbenteurer
     , mgFocus           = Nothing
     }
 
-modifyState :: (MGState -> MGState) -> Trigger a b ()
 modifyState f = modifyUserData f
 
-getState :: Trigger a b MGState
+getState :: (MBMonad m) => m MGState
 getState = getUserData
 
 modifyStats f = modifyState (\x -> x { mgStats = (f $ mgStats x) })
