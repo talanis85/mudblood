@@ -100,6 +100,7 @@ updateWidgetList = do
         ] ++ mkMGStatWidgets
           ++ case guild of
                 MGGuildZauberer -> mkMGZaubererWidgets (getUserData >>= return . mgZaubererStats)
+                MGGuildTanjian -> mkMGTanjianWidgets (getUserData >>= return . mgTanjianStats)
                 _ -> []
 
 mkMGStatWidgets =
