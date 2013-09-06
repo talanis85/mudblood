@@ -34,7 +34,7 @@ moveTrigger :: MBTriggerFlow
 moveTrigger = Permanent $ guardSendEvent >>> \l -> do
                 map <- getMap
                 let gr = mapGraph map
-                    nodes = Gr.out gr (mapCurrent map)
+                    nodes = Gr.out gr (mapCurrentId map)
                 case find (\(_, out, label) -> exitKey label == l) nodes of
                     Nothing -> returnSend l
-                    Just (_, out, _) -> putMap (map { mapCurrent = out }) >> returnSend l
+                    Just (_, out, _) -> putMap (map { mapCurrentId = out }) >> returnSend l

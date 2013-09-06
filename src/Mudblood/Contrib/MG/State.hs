@@ -130,10 +130,10 @@ mkMGMapWidgets =
     [ UIWidgetText $ return "--- Mapper ---"
     , UIWidgetTable $ do
         map <- getMap
-        let (id, room) = currentRoom map
+        let (id, room) = (mapCurrentId map, mapCurrentData map)
         return
             [ [ "Raum #:", (show $ id) ]
-            , [ "Tag:", (show $ findUserData "tag" $ roomUserData room) ]
-            , [ "Hash:", (show $ findUserData "hash" $ roomUserData room) ]
+            , [ "Tag:", (getUserValue "tag" $ roomUserData room) ]
+            , [ "Hash:", (getUserValue "hash" $ roomUserData room) ]
             ]
     ]

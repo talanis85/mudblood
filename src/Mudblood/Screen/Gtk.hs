@@ -229,7 +229,7 @@ execUIAction action = case action of
     UIUpdateMap map -> do
         ctls <- askControls
         liftIO $ G.labelSetText (ctlStatusSystem ctls) $
-            printf "Room: %d" (mapCurrent map)
+            printf "Room: %d" (mapCurrentId map)
 
 ------------------------------------------------------------------------------
 

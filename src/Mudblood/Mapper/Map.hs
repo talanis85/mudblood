@@ -6,13 +6,15 @@ module Mudblood.Mapper.Map
       Map (..)
     , RoomData (..)
     , ExitData (..)
+    , UserValue (..)
+    , UserValueClass (..)
     -- * Loading maps
     , mapEmpty, mapFromString, mapFromFile
     -- * Querying a map
-    , currentRoom
+    , mapCurrentData
     , shortestPath
     -- * Handling User Data
-    , findUserData
+    , getUserValue, putUserValue
     ) where
 
 import Text.JSON
@@ -27,7 +29,7 @@ import Data.Graph.Inductive.Tree
 type MapGraph = Gr RoomData ExitData
 
 data RoomData = RoomData
-    { roomUserData :: M.Map String UserData
+    { roomUserData :: UserData
     }
   deriving (Show)
 
@@ -40,17 +42,17 @@ newtype JSRoom = JSRoom { getJSRoom :: LNode RoomData }
 data ExitData = ExitData
     { exitLayer :: String
     , exitKey :: String
-    , exitUserData :: M.Map String UserData
+    , exitUserData :: UserData
     }
   deriving (Show)
 
 newtype JSExit = JSExit { getJSExit :: LEdge ExitData }
 
-newtype JSUserData = JSUserData { getJSUserData :: M.Map String UserData }
+newtype JSUserData = JSUserData { getJSUserData :: UserData }
 
 data Map = Map
     { mapGraph :: MapGraph
-    , mapCurrent :: Node
+    , mapCurrentId :: Node
     }
   deriving (Show)
 
@@ -58,7 +60,7 @@ data Map = Map
 mapEmpty :: Map
 mapEmpty = Map 
     { mapGraph = mkGraph [(0, mkRoomData)] []
-    , mapCurrent = 0
+    , mapCurrentId = 0
     }
 
 -- | Load a map from a string in JSON format.
@@ -78,7 +80,7 @@ instance JSON Map where
         --virtual <- valFromObj "virtual" o
         return $ Map
             { mapGraph   = mkGraph rooms exits
-            , mapCurrent = 0
+            , mapCurrentId = 0
             }
 
     readJSON _ = fail "Expected object"
@@ -131,51 +133,95 @@ instance JSON JSExit where
                                           ]
 
 instance JSON JSUserData where
-    readJSON (JSObject o) = return $ JSUserData $ M.map toUserData $ M.fromList $ fromJSObject o
+    readJSON (JSObject o) = return $ JSUserData $ M.map toUserValue $ M.fromList $ fromJSObject o
 
     readJSON _ = fail "Expected object"
 
-    showJSON d = showJSON $ toJSObject $ M.toList $ M.map fromUserData (getJSUserData d)
+    showJSON d = showJSON $ toJSObject $ M.toList $ ((M.map fromUserValue (getJSUserData d)) :: M.Map String JSValue)
 
-data UserData = UserDataNull
-              | UserDataBool Bool
-              | UserDataRational Rational
-              | UserDataString String
-              | UserDataArray [UserData]
+------------------------------------------------------------------------------
 
-instance Show UserData where
-    show UserDataNull = "<null>"
-    show (UserDataBool v) = show v
-    show (UserDataRational v) = show v
-    show (UserDataString v) = v
-    show (UserDataArray v) = concat $ intersperse "," (map show v)
+type UserData = M.Map String UserValue
 
-toUserData JSNull = UserDataNull
-toUserData (JSBool v) = UserDataBool v
-toUserData (JSRational _ v) = UserDataRational v
-toUserData (JSString v) = UserDataString $ fromJSString v
-toUserData (JSArray v) = UserDataArray $ map toUserData v
-toUserData _ = UserDataNull
+data UserValue = UserValueNull
+               | UserValueBool Bool
+               | UserValueRational Rational
+               | UserValueString String
+               | UserValueArray [UserValue]
 
-fromUserData UserDataNull = JSNull
-fromUserData (UserDataBool v) = JSBool v
-fromUserData (UserDataRational v) = JSRational True v
-fromUserData (UserDataString v) = JSString $ toJSString v
-fromUserData (UserDataArray v) = JSArray $ map fromUserData v
+instance Show UserValue where
+    show UserValueNull = "<null>"
+    show (UserValueBool v) = show v
+    show (UserValueRational v) = show v
+    show (UserValueString v) = v
+    show (UserValueArray v) = concat $ intersperse "," (map show v)
+
+class UserValueClass a where
+    toUserValue :: a -> UserValue
+    fromUserValue :: UserValue -> a
+
+instance UserValueClass JSValue where
+    toUserValue JSNull = UserValueNull
+    toUserValue (JSBool v) = UserValueBool v
+    toUserValue (JSRational _ v) = UserValueRational v
+    toUserValue (JSString v) = UserValueString $ fromJSString v
+    toUserValue (JSArray v) = UserValueArray $ map toUserValue v
+    toUserValue _ = UserValueNull
+
+    fromUserValue UserValueNull = JSNull
+    fromUserValue (UserValueBool v) = JSBool v
+    fromUserValue (UserValueRational v) = JSRational True v
+    fromUserValue (UserValueString v) = JSString $ toJSString v
+    fromUserValue (UserValueArray v) = JSArray $ map fromUserValue v
+
+instance UserValueClass Bool where
+    toUserValue v = UserValueBool v
+
+    fromUserValue (UserValueBool v)     = v
+    fromUserValue (UserValueNull)       = False
+    fromUserValue (UserValueRational v) = v /= 0
+    fromUserValue (UserValueString v)   = v /= ""
+    fromUserValue (UserValueArray v)    = not $ null v
+    fromUserValue _                     = False
+
+instance UserValueClass Int where
+    toUserValue v = UserValueRational (fromIntegral v)
+
+    fromUserValue (UserValueRational v) = (round v)
+    fromUserValue (UserValueBool True)  = 1
+    fromUserValue (UserValueBool False) = 0
+    fromUserValue (UserValueString "")  = 0
+    fromUserValue (UserValueString v)   = 1
+    fromUserValue (UserValueArray v)    = length v
+    fromUserValue _                     = 0
+
+instance UserValueClass String where
+    toUserValue v = UserValueString v
+
+    fromUserValue (UserValueString v)   = v
+    fromUserValue (UserValueBool v)     = if v then "yes" else "no"
+    fromUserValue (UserValueNull)       = ""
+    fromUserValue x                     = show x
+
+getUserValue :: (UserValueClass a) => String -> UserData -> a
+getUserValue key ud = fromUserValue $ M.findWithDefault UserValueNull key ud
+
+putUserValue :: (UserValueClass a) => String -> a -> UserData -> UserData
+putUserValue key val ud = M.insert key (toUserValue val) ud
+
+------------------------------------------------------------------------------
+
+-- | Get the current room's RoomData.
+mapCurrentData :: Map -> RoomData
+mapCurrentData m = let cur = mapCurrentId m
+                       dat = case lab (mapGraph m) cur of
+                               Just dat' -> dat'
+                               Nothing   -> mkRoomData
+                   in dat
 
 -- | Map a function over the graph of a map.
 mapMapGraph :: (MapGraph -> MapGraph) -> Map -> Map
 mapMapGraph f g = g { mapGraph = f (mapGraph g) }
-
-currentRoom :: Map -> (Int, RoomData)
-currentRoom m = let cur = mapCurrent m
-                    dat = case lab (mapGraph m) cur of
-                            Just dat' -> dat'
-                            Nothing   -> mkRoomData
-                in (cur, dat)
-
-findUserData :: String -> M.Map String UserData -> UserData
-findUserData = M.findWithDefault UserDataNull
 
 -- | Shortest path from one room to another.
 shortestPath :: (Real w) => Map -> (ExitData -> w) -> Int -> Int -> [String]
