@@ -18,6 +18,7 @@ import Data.Dynamic
 import Mudblood
 
 import Mudblood.Contrib.MG.Gilden
+import Mudblood.Contrib.MG.Settings
 
 data MGState = MGState
     { mgStats         :: MGStats
@@ -26,6 +27,8 @@ data MGState = MGState
 
     , mgGuild         :: MGGuild
     , mgFocus         :: Maybe String
+
+    , mgSettings      :: MGSettings
     }
   deriving (Typeable)
 
@@ -60,6 +63,8 @@ newMGState = MGState
 
     , mgGuild           = MGGuildAbenteurer
     , mgFocus           = Nothing
+
+    , mgSettings        = mkMGSettings
     }
 
 modifyState f = modifyUserData f

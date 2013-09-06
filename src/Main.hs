@@ -53,6 +53,12 @@ commands = M.fromList
             Just map' -> lift $ putMap map'
             Nothing -> lift $ echo "Invalid map file"
         )
+    , ("set", Command ["option", "value"] $ do
+        option <- popStringParam
+        settings <- lift getUserData >>= return . mgSettings
+        newSettings <- mgSettingsPut settings option
+        lift $ modifyUserData $ \s -> s { mgSettings = newSettings }
+      )
     ]
 
 -- TRIGGERS -----------------------------------------------------------
