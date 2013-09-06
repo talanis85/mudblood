@@ -14,6 +14,7 @@ module Mudblood.Contrib.MG.State
 
 import Data.Typeable
 import Data.Dynamic
+import qualified Data.Map as M
 
 import Mudblood
 
@@ -98,6 +99,7 @@ updateWidgetList = do
     modifyWidgets $ \_ ->
         [ UIWidgetText $ return "--- MorgenGrauen ---"
         ] ++ mkMGStatWidgets
+          ++ mkMGMapWidgets
           ++ case guild of
                 MGGuildZauberer -> mkMGZaubererWidgets (getUserData >>= return . mgZaubererStats)
                 MGGuildTanjian -> mkMGTanjianWidgets (getUserData >>= return . mgTanjianStats)
@@ -123,3 +125,15 @@ mkMGStatWidgets =
 
     showBool True = "Ja"
     showBool False = "Nein"
+
+mkMGMapWidgets =
+    [ UIWidgetText $ return "--- Mapper ---"
+    , UIWidgetTable $ do
+        map <- getMap
+        let (id, room) = currentRoom map
+        return
+            [ [ "Raum #:", (show $ id) ]
+            , [ "Tag:", (show $ findUserData "tag" $ roomUserData room) ]
+            , [ "Hash:", (show $ findUserData "hash" $ roomUserData room) ]
+            ]
+    ]
