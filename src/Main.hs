@@ -8,12 +8,14 @@ import Data.Dynamic
 
 import Control.Concurrent hiding (yield)
 import Control.Concurrent.STM
+import Control.Monad
 
 import qualified Data.Map as M
 
 import Text.Printf
 
 import Mudblood.Contrib.MG
+import Mudblood.Paths
 
 import Mudblood.User.Trigger
 import Mudblood.Mapper.Map
@@ -84,12 +86,17 @@ boot =
     do
     bind [KEsc, KBS, KAscii '!', KAscii 'q'] $ mb quit
     bind [KEsc, KBS, KAscii '!', KAscii 'x', KEsc, KBS, KAscii 'q'] $ mb quit
-    mb $ connect "openfish" "9999"
-    --mb $ connect "localhost" "10000"
     
     mapM_ (\(a,b) -> bind a (mb b)) tanjianBindings
 
     mb $ updateWidgetList
+
+    -- Read rc file
+    mbpath <- mb $ io $ initUserPath []
+    rcfile <- mb $ io $ readUserFile (mbpath </> "rc")
+    case rcfile of
+        Nothing -> return ()
+        Just file -> forM_ (filter (/= "") (lines file)) $ mb . command
 
     screen
 
