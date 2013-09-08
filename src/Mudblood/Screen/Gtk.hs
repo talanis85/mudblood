@@ -8,8 +8,6 @@ module Mudblood.Screen.Gtk
     , bind
     ) where
 
-import Prelude hiding (error)
-
 import Data.Char
 import Data.Word
 import Data.Monoid
@@ -128,7 +126,7 @@ connectScreen host port =
     sock <- liftIO . telnetConnect host port $ telnetRecvHandler $ telnetProc completeState
     case sock of
         Right sock' -> modify $ \s -> s { scrSocket = Just sock' }
-        Left err -> mb $ error err
+        Left err -> mb $ mbError err
   where
     telnetProc state ev = case ev of
         TelnetRawEvent s -> liftIO $ telnetReceiveProc state $ DataEvent $ UTF8.decode s

@@ -11,7 +11,7 @@ module Mudblood.Core
     -- * The MBF Functor
     , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI)
     -- * MB primitives
-    , command, commands, quit, logger, process, processSend, error
+    , command, commands, quit, logger, process, processSend, mbError
     , connect, sendBinary, modifyTriggers
     , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap)
     -- * Events
@@ -23,8 +23,6 @@ module Mudblood.Core
     , UIWidget (..)
     , getWidgets, modifyWidgets
     ) where
-
-import Prelude hiding (catch, error)
 
 import Data.Word
 import Data.List.Split
@@ -200,10 +198,10 @@ command c = case parseCommand c of
                    Just c''    -> do
                                   res <- runCommand (cmdAction c'') args
                                   case res of
-                                    Left s -> error s
+                                    Left s -> mbError s
                                     Right _ -> return ()
-                   Nothing     -> error "Invalid command"
-    Left e -> error $ "Parse error in '" ++ c ++ "': " ++ e
+                   Nothing     -> mbError "Invalid command"
+    Left e -> mbError $ "Parse error in '" ++ c ++ "': " ++ e
 
 -- | Run commands from a string
 commands :: String -> MB ()
@@ -255,8 +253,8 @@ trigger ev =
         TelnetTEvent t -> return ()
 
 -- | Output an error.
-error :: String -> MB ()
-error str = echo $ "Error: " ++ str
+mbError :: String -> MB ()
+mbError str = echo $ "Error: " ++ str
 
 connect :: String -> String -> MB ()
 connect = dispatchConnect

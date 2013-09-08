@@ -12,8 +12,6 @@ module Mudblood.Contrib.MG.State
     , updateWidgetList
     ) where
 
-import Prelude hiding (error)
-
 import Data.Typeable
 import Data.Dynamic
 import qualified Data.Map as M
@@ -90,7 +88,7 @@ setFocus arg = case arg of
 
 setGuild :: String -> MB ()
 setGuild arg = case readGuild arg of
-    Nothing -> error $ "Unbekannte Gilde: " ++ arg
+    Nothing -> mbError $ "Unbekannte Gilde: " ++ arg
     Just g  -> do
                modifyUserData $ \s -> s { mgGuild = g }
                updateWidgetList
