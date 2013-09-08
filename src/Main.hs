@@ -82,6 +82,12 @@ mgCommands = M.fromList
 
 -- TRIGGERS -----------------------------------------------------------
 
+gmcpShowTrigger = Permanent $ \ev -> do
+    case ev of
+        GMCPTEvent g -> echo $ "GMCP: " ++ show g
+        _ -> return ()
+    return [ev]
+
 triggers = fightColorizer :>>: zaubererreportTrigger defaultZaubererStatus :>>: colorTriggers :>>: moveTrigger
 
 tanjianBindings = [ ([KF1],  spell "meditation")
@@ -108,6 +114,8 @@ boot =
 
     mb $ updateWidgetList
 
+    mb $ connect "mg.mud.de" "4711"
+
     -- Read rc file
     mbpath <- mb $ io $ initUserPath []
     rcfile <- mb $ io $ readUserFile (mbpath </> "rc")
@@ -115,7 +123,12 @@ boot =
         Nothing -> return ()
         Just file -> mb $ commands file
 
+    --mb $ initGMCP
+
     screen
 
 main :: IO ()
-main = execScreen (MBConfig mgCommands) (mkMBState (Just triggers) newMGState) boot
+main = execScreen (mkMBConfig
+        { confCommands = mgCommands
+        , confGMCPSupports = ["MG.char 1", "comm.channel 1", "MG.room 1"]
+        }) (mkMBState (Just triggers) newMGState) boot

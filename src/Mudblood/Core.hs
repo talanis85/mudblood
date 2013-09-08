@@ -5,18 +5,19 @@ module Mudblood.Core
     -- * The MB monad
       MB, runMB
     , MBState (mbLinebuffer, mbUserData), mkMBState
-    , MBConfig (MBConfig)
+    , MBConfig (..), mkMBConfig
     , LogSeverity (LogDebug, LogInfo, LogWarning, LogError)
     , MBCommand
     -- * The MBF Functor
     , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI)
     -- * MB primitives
-    , command, commands, quit, logger, process, processSend, mbError
+    , command, commands, quit, logger, process, processSend, processTelnet, mbError
     , connect, sendBinary, modifyTriggers
+    , initGMCP
     , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap)
     -- * Events
     -- ** The trigger event type
-    , TriggerEvent (LineTEvent, SendTEvent, TelnetTEvent)
+    , TriggerEvent (LineTEvent, SendTEvent, TelnetTEvent, GMCPTEvent)
     -- ** Convenient type aliases
     , MBTrigger, MBTriggerFlow
     -- * Widgets
@@ -47,6 +48,7 @@ import Mudblood.Text
 import Mudblood.Trigger
 import Mudblood.Command
 import Mudblood.Mapper.Map
+import Mudblood.GMCP
 
 import Debug.Trace
 
@@ -128,8 +130,14 @@ mkMBState triggers user = MBState {
     }
 
 data MBConfig = MBConfig {
-    confCommands :: M.Map String MBCommand
+    confCommands :: M.Map String MBCommand,
+    confGMCPSupports :: [String]
 }
+
+mkMBConfig = MBConfig
+    { confCommands = M.empty
+    , confGMCPSupports = []
+    }
 
 data MBF o = forall a. MBFIO (IO a) (a -> o)
            | MBFLine AttrString o
@@ -185,6 +193,7 @@ type MBTriggerFlow = TriggerFlow TriggerEvent
 data TriggerEvent = LineTEvent AttrString   -- ^ Emitted when a line was received from the host
                   | SendTEvent String       -- ^ Emitted when the user wants to send a line of input
                   | TelnetTEvent TelnetNeg  -- ^ Emitted when a telnet negotiation is received
+                  | GMCPTEvent GMCP         -- ^ Emitted when a GMCP telneg is received
     deriving (Eq)
 
 --------------------------------------------------------------------------------------------------
@@ -234,6 +243,30 @@ processSend :: String -> MB ()
 processSend str = do
     trigger $ SendTEvent str
 
+initGMCP :: MB ()
+initGMCP = do
+    sendBinary $ telnetNegToBytes $ TelnetNeg (Just CMD_DO) (Just OPT_GMCP) []        
+    sendBinary $ telnetNegToBytes $ telnetSubneg OPT_GMCP $ UTF8.encode $ dumpGMCP $ GMCP "Core.Hello" $
+        JSObject $ toJSObject [ ("client", JSString $ toJSString "mudblood"),
+                                ("version", JSString $ toJSString "0.1")
+                              ]
+    sendBinary $ telnetNegToBytes $ telnetSubneg OPT_GMCP $ UTF8.encode $ dumpGMCP $ GMCP "Core.Supports.Set" $
+        JSArray $ [ JSString $ toJSString "MG.char 1"
+                  , JSString $ toJSString "comm.channel 1"
+                  , JSString $ toJSString "MG.room 1"
+                  ]
+
+processTelnet :: TelnetNeg -> MB ()
+processTelnet neg = case neg of
+    -- GMCP
+    TelnetNeg (Just CMD_WILL) (Just OPT_GMCP) _ -> initGMCP
+    TelnetNeg (Just CMD_SB) (Just OPT_GMCP) dat ->
+        case parseGMCP $ UTF8.decode dat of
+            Nothing -> mbError "Received invalid GMCP"
+            Just gmcp -> trigger $ GMCPTEvent gmcp
+    -- Else: output telneg
+    x -> echoA (setFg Magenta (toAttrString $ show x))
+
 -- | Feed a trigger event to the global trigger chain.
 trigger :: TriggerEvent -> MB ()
 trigger ev =
@@ -251,6 +284,7 @@ trigger ev =
         LineTEvent line -> echoA line
         SendTEvent line -> send line
         TelnetTEvent t -> return ()
+        GMCPTEvent g -> return ()
 
 -- | Output an error.
 mbError :: String -> MB ()

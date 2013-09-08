@@ -76,12 +76,14 @@ fromTelnetCommand cmd = case cmd of
 data TelnetOption = OPT_UNKNOWN Word8
                   | OPT_EOR
                   | OPT_NAWS
+                  | OPT_GMCP
     deriving (Show, Eq)
 
 toTelnetOption :: (Integral a) => a -> TelnetOption
 toTelnetOption x = case x of
     25 -> OPT_EOR
     31 -> OPT_NAWS
+    201 -> OPT_GMCP
     -- etc.
     x -> OPT_UNKNOWN (fromIntegral x)
 
@@ -89,6 +91,7 @@ fromTelnetOption :: (Integral a) => TelnetOption -> a
 fromTelnetOption opt = case opt of
     OPT_EOR -> 25
     OPT_NAWS -> 31
+    OPT_GMCP -> 201
     OPT_UNKNOWN x -> (fromIntegral x)
 
 -- | A telnet negotiation consists of a command, an option and

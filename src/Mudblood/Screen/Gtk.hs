@@ -470,9 +470,9 @@ handleTelneg neg = case neg of
         (w, h) <- getViewSize
         sendSocket $ telnegToBytes $ telnetNegNaws w h
     -}
-    -- All other telnegs are just printed
+    -- All other Telnegs are handled by the Core module
     _ ->
-        mb $ echoA $ (setFg Magenta $ toAttrString $ show neg)
+        mb $ processTelnet neg
 
 ------------------------------------------------------------------------------
 
