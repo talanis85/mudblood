@@ -187,6 +187,7 @@ type MBTriggerFlow = TriggerFlow TriggerEvent
 data TriggerEvent = LineTEvent AttrString   -- ^ Emitted when a line was received from the host
                   | SendTEvent String       -- ^ Emitted when the user wants to send a line of input
                   | TelnetTEvent TelnetNeg  -- ^ Emitted when a telnet negotiation is received
+    deriving (Eq)
 
 --------------------------------------------------------------------------------------------------
 

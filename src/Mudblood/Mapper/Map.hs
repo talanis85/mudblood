@@ -10,6 +10,8 @@ module Mudblood.Mapper.Map
     , UserValueClass (..)
     -- * Loading maps
     , mapEmpty, mapFromString, mapFromFile
+    -- * Transforming a map
+    , next, step
     -- * Querying a map
     , mapCurrentData
     , shortestPath
@@ -228,8 +230,23 @@ shortestPath :: (Real w) => Map -> (ExitData -> w) -> Int -> Int -> [String]
 shortestPath m weightfun src dest = let graph = mapGraph m
                                     in case sp src dest (emap weightfun graph) of
                                         []            -> []
-                                        (first:nodes) -> snd $ foldl (foldPath graph) (first, []) nodes
+                                        (first:nodes) -> reverse $ snd $ foldl (foldPath graph) (first, []) nodes
 
     where foldPath graph (s, p) d = let (_, _, edge) = head $ filter (goesTo d) $ out graph s
                                     in (d, (exitKey edge):p)
           goesTo d' (_, d, _) = d == d'
+
+------------------------------------------------------------------------------
+
+next :: String -> Map -> Node -> Maybe Node
+next key m n = case filter (hasKey key . snd) (lsuc (mapGraph m) n) of
+    [] -> Nothing
+    (x:xs) -> Just (fst x)
+  where
+    hasKey key l = exitKey l == key
+
+step :: String -> Map -> Map
+step key m = case next key m (mapCurrentId m) of
+    Nothing -> m
+    Just n  -> m { mapCurrentId = n }
+

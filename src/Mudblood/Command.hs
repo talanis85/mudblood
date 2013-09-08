@@ -2,6 +2,7 @@ module Mudblood.Command
     ( CommandMonad
     , Command (Command, cmdArgNames, cmdAction)
     , MonadTrans (lift)
+    , haveParam
     , popIntParam, popStringParam, popBoolParam
     , runCommand
     , parseCommand
@@ -14,6 +15,8 @@ import Text.ParserCombinators.Parsec.Language (haskellDef)
 import Control.Monad.Trans
 import Control.Monad.State
 import Control.Monad.Trans.Either
+
+import Data.List
 
 data Command m = Command {
     cmdArgNames :: [String],
@@ -44,6 +47,9 @@ runCommand (CommandMonad cmd) args = do
     case r of
         Left s -> return $ Left s
         Right _ -> return $ Right ()
+
+haveParam :: (Monad m) => CommandMonad m Bool
+haveParam = (CommandMonad $ lift get) >>= return . not . null
 
 popIntParam :: (Monad m) => CommandMonad m Int
 popIntParam = do

@@ -8,7 +8,7 @@ import Data.Dynamic
 
 import Control.Concurrent hiding (yield)
 import Control.Concurrent.STM
-import Control.Monad
+import Control.Monad hiding (guard)
 
 import qualified Data.Map as M
 
@@ -38,15 +38,23 @@ commands = M.fromList
         )
     , ("guild", cmdGuild)
     , ("focus", cmdFocus)
-    , ("walk", Command ["source", "destination"] $ do
+    , ("walk", Command ["destination"] $ do
         map <- lift $ getMap
-        src <- popIntParam
         dest <- popIntParam
-        case shortestPath map (const 1) src dest of
+
+        let walkerFun = const $ return WalkerContinue
+        --let walkerFun ev = do
+        --    if ev == SendTEvent "next"
+        --        then return WalkerContinue            
+        --        else return WalkerPause
+
+        case shortestPath map (const 1) (mapCurrentId map) dest of
             []           -> fail "Path not found"
             (first:path) -> do
-                            lift $ modifyTriggers $ fmap (:>>: (walker (const $ return WalkerContinue) path))
+                            lift $ echo $ "Path is: " ++ show (first:path)
+                            lift $ modifyTriggers $ fmap (:>>: (walker walkerFun path))
                             lift $ send first
+                            lift $ modifyMap $ step first
         )
     , ("loadmap", Command ["filename"] $ do
         filename <- popStringParam

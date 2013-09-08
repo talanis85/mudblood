@@ -20,21 +20,18 @@ data WalkerControl = WalkerStop
 walker :: (TriggerEvent -> MBTrigger WalkerControl) -> [String] -> MBTriggerFlow
 walker f path = Volatile $ walker' f path
     where walker' f [] ev = return [ev]
-          walker' f (step:rest) ev = do
+          walker' f (s:rest) ev = do
             ret <- f ev
             case ret of
                 WalkerStop -> return [ev]
                 WalkerPause -> failT
                 WalkerContinue -> do
-                                  send step
+                                  send s
+                                  modifyMap $ step s
                                   ev' <- yield [ev]
                                   walker' f rest ev'
 
 moveTrigger :: MBTriggerFlow
 moveTrigger = Permanent $ guardSendEvent >>> \l -> do
-                map <- getMap
-                let gr = mapGraph map
-                    nodes = Gr.out gr (mapCurrentId map)
-                case find (\(_, out, label) -> exitKey label == l) nodes of
-                    Nothing -> returnSend l
-                    Just (_, out, _) -> putMap (map { mapCurrentId = out }) >> returnSend l
+                modifyMap $ step l
+                returnSend l
