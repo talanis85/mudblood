@@ -5,6 +5,7 @@ import Mudblood.User.Regex
 
 import Data.Array
 import Data.Dynamic
+import Data.GMCP
 
 import Control.Concurrent hiding (yield)
 import Control.Concurrent.STM
@@ -82,13 +83,37 @@ mgCommands = M.fromList
 
 -- TRIGGERS -----------------------------------------------------------
 
-gmcpShowTrigger = Permanent $ \ev -> do
+gmcpTrigger = Permanent $ \ev -> do
     case ev of
-        GMCPTEvent g -> echo $ "GMCP: " ++ show g
-        _ -> return ()
-    return [ev]
+        GMCPTEvent g -> do
+            case gmcpModule g of
+                "MG.char.base" -> modifyChar $ \s -> s
+                    { mgCharName = getStringFieldDefault (mgCharName s) "name" g
+                    , mgCharRace = getStringFieldDefault (mgCharRace s) "race" g
+                    , mgCharPresay = getStringFieldDefault (mgCharPresay s) "presay" g
+                    , mgCharTitle = getStringFieldDefault (mgCharTitle s) "title" g
+                    , mgCharWizlevel = getIntFieldDefault (mgCharWizlevel s) "wizlevel" g
+                    }
+                "MG.char.info" -> modifyChar $ \s -> s
+                    { mgCharLevel = getIntFieldDefault (mgCharLevel s) "level" g
+                    , mgCharGuildLevel = getIntFieldDefault (mgCharGuildLevel s) "guild_level" g
+                    , mgCharGuildTitle = getStringFieldDefault (mgCharGuildTitle s) "guild_title" g
+                    }
+                "MG.char.maxvitals" -> modifyStats $ \s -> s
+                    { mgStatMLP = getIntFieldDefault (mgStatMLP s) "max_hp" g
+                    , mgStatMKP = getIntFieldDefault (mgStatMKP s) "max_sp" g
+                    }
+                "MG.char.vitals" -> modifyStats $ \s -> s
+                    { mgStatLP = getIntFieldDefault (mgStatLP s) "hp" g
+                    , mgStatKP = getIntFieldDefault (mgStatKP s) "sp" g
+                    }
+                "comm.channel" -> echoA $ setFg Blue $ toAttrString $ getStringFieldDefault "" "msg" g
+                _ -> return ()
+            return [ev]
+        _ -> return [ev]
 
-triggers = fightColorizer :>>: zaubererreportTrigger defaultZaubererStatus :>>: colorTriggers :>>: moveTrigger
+
+triggers = gmcpTrigger :>>: fightColorizer :>>: zaubererreportTrigger defaultZaubererStatus :>>: colorTriggers :>>: moveTrigger
 
 tanjianBindings = [ ([KF1],  spell "meditation")
                   , ([KF2],  spell "kokoro")
@@ -131,4 +156,4 @@ main :: IO ()
 main = execScreen (mkMBConfig
         { confCommands = mgCommands
         , confGMCPSupports = ["MG.char 1", "comm.channel 1", "MG.room 1"]
-        }) (mkMBState (Just triggers) newMGState) boot
+        }) (mkMBState (Just triggers) mkMGState) boot

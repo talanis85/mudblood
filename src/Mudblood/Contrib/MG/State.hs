@@ -1,10 +1,11 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module Mudblood.Contrib.MG.State 
-    ( MGState (..)
+    ( MGState (..), mkMGState
     , MGStats (..)
-    , modifyStats
+    , MGChar (..)
+    , modifyStats, modifyChar
     , modifyTanjianStats, modifyZaubererStats
-    , newMGState, modifyState, getState
+    , modifyState, getState
     -- * Modify the state
     , setFocus, setGuild
     -- * Widgets
@@ -22,7 +23,8 @@ import Mudblood.Contrib.MG.Gilden
 import Mudblood.Contrib.MG.Settings
 
 data MGState = MGState
-    { mgStats         :: MGStats
+    { mgChar          :: MGChar
+    , mgStats         :: MGStats
     , mgTanjianStats  :: MGTanjianStats
     , mgZaubererStats :: MGZaubererStats
 
@@ -34,6 +36,28 @@ data MGState = MGState
     , mgProfile       :: String
     }
   deriving (Typeable)
+
+data MGChar = MGChar
+    { mgCharName        :: String
+    , mgCharRace        :: String
+    , mgCharPresay      :: String
+    , mgCharTitle       :: String
+    , mgCharWizlevel    :: Int
+    , mgCharLevel       :: Int
+    , mgCharGuildLevel  :: Int
+    , mgCharGuildTitle  :: String
+    }
+
+mkMGChar = MGChar
+    { mgCharName        = "Jemand"
+    , mgCharRace        = "Etwas"
+    , mgCharPresay      = ""
+    , mgCharTitle       = ""
+    , mgCharWizlevel    = 0
+    , mgCharLevel       = 0
+    , mgCharGuildLevel  = 0
+    , mgCharGuildTitle  = ""
+    }
 
 data MGStats = MGStats
     { mgStatLP      :: Int
@@ -48,8 +72,9 @@ data MGStats = MGStats
     , mgStatF       :: Bool
     }
 
-newMGState = MGState
-    { mgStats = MGStats
+mkMGState = MGState
+    { mgChar = mkMGChar
+    , mgStats = MGStats
         { mgStatLP      = 0
         , mgStatMLP     = 0
         , mgStatKP      = 0
@@ -77,6 +102,7 @@ modifyState f = modifyUserData f
 getState :: (MBMonad m) => m MGState
 getState = getUserData
 
+modifyChar f = modifyState (\x -> x { mgChar = (f $ mgChar x) })
 modifyStats f = modifyState (\x -> x { mgStats = (f $ mgStats x) })
 modifyTanjianStats f = modifyState (\x -> x { mgTanjianStats = (f $ mgTanjianStats x) })
 modifyZaubererStats f = modifyState (\x -> x { mgZaubererStats = (f $ mgZaubererStats x) })
@@ -98,12 +124,23 @@ updateWidgetList = do
     guild <- getUserData >>= return . mgGuild
     modifyWidgets $ \_ ->
         [ UIWidgetText $ return "--- MorgenGrauen ---"
-        ] ++ mkMGStatWidgets
+        ] ++ mkMGCharWidgets
+          ++ mkMGStatWidgets
           ++ mkMGMapWidgets
           ++ case guild of
                 MGGuildZauberer -> mkMGZaubererWidgets (getUserData >>= return . mgZaubererStats)
                 MGGuildTanjian -> mkMGTanjianWidgets (getUserData >>= return . mgTanjianStats)
                 _ -> []
+
+mkMGCharWidgets =
+    [ UIWidgetTable $ do
+        char <- getUserData >>= return . mgChar
+        return
+            [ [ "Name:", (mgCharName char) ]
+            , [ "Rasse:", (mgCharRace char) ]
+            , [ "Level:", (show $ mgCharLevel char) ]
+            ]
+    ]
 
 mkMGStatWidgets =
     [ UIWidgetTable $ do
