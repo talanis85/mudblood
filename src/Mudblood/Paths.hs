@@ -1,5 +1,6 @@
 module Mudblood.Paths
     ( initUserPath
+    , existsUserPath
     , readUserFile
     , (</>)
     ) where
@@ -10,9 +11,15 @@ import System.FilePath
 initUserPath :: [FilePath] -> IO FilePath
 initUserPath p = do
     userdir <- getAppUserDataDirectory "mudblood"
-    let combined = joinPath p </> userdir
+    let combined = userdir </> joinPath p
     createDirectoryIfMissing True combined
     return combined
+
+existsUserPath :: [FilePath] -> IO Bool
+existsUserPath p = do
+    userdir <- getAppUserDataDirectory "mudblood"
+    let combined = userdir </> joinPath p
+    doesDirectoryExist combined
 
 readUserFile :: FilePath -> IO (Maybe String)
 readUserFile p = do

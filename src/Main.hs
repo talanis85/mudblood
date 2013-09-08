@@ -15,7 +15,6 @@ import qualified Data.Map as M
 import Text.Printf
 
 import Mudblood.Contrib.MG
-import Mudblood.Paths
 
 import Mudblood.User.Trigger
 import Mudblood.Mapper.Map
@@ -23,7 +22,7 @@ import Mudblood.Mapper.Walk
 
 -- COMMANDS ------------------------------------------------------------
 
-commands = M.fromList
+mgCommands = M.fromList
     [ ("echo", Command ["text"] $ do
         x <- popStringParam
         lift $ echoA $ fst $ decode x defaultAttr
@@ -35,6 +34,16 @@ commands = M.fromList
         h <- popStringParam
         p <- popStringParam
         lift $ connect h p
+        )
+    , ("send", Command ["string"] $ do
+        s <- popStringParam
+        lift $ send s
+        )
+    , ("addprofile", Command ["name"] $ do
+        popStringParam >>= lift . addProfile
+        )
+    , ("profile", Command ["name"] $ do
+        popStringParam >>= lift . loadProfile
         )
     , ("guild", cmdGuild)
     , ("focus", cmdFocus)
@@ -104,9 +113,9 @@ boot =
     rcfile <- mb $ io $ readUserFile (mbpath </> "rc")
     case rcfile of
         Nothing -> return ()
-        Just file -> forM_ (filter (/= "") (lines file)) $ mb . command
+        Just file -> mb $ commands file
 
     screen
 
 main :: IO ()
-main = execScreen (MBConfig commands) (mkMBState (Just triggers) newMGState) boot
+main = execScreen (MBConfig mgCommands) (mkMBState (Just triggers) newMGState) boot

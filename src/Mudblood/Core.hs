@@ -11,7 +11,7 @@ module Mudblood.Core
     -- * The MBF Functor
     , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI)
     -- * MB primitives
-    , command, quit, logger, process, processSend, error
+    , command, commands, quit, logger, process, processSend, error
     , connect, sendBinary, modifyTriggers
     , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap)
     -- * Events
@@ -204,6 +204,10 @@ command c = case parseCommand c of
                                     Right _ -> return ()
                    Nothing     -> error "Invalid command"
     Left e -> error $ "Parse error in '" ++ c ++ "': " ++ e
+
+-- | Run commands from a string
+commands :: String -> MB ()
+commands s = forM_ (filter (/= "") (lines s)) command
 
 -- | Quit mudblood
 quit :: MB ()

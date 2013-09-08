@@ -30,6 +30,8 @@ data MGState = MGState
     , mgFocus         :: Maybe String
 
     , mgSettings      :: MGSettings
+
+    , mgProfile       :: String
     }
   deriving (Typeable)
 
@@ -66,6 +68,8 @@ newMGState = MGState
     , mgFocus           = Nothing
 
     , mgSettings        = mkMGSettings
+
+    , mgProfile         = ""
     }
 
 modifyState f = modifyUserData f

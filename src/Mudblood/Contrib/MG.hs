@@ -6,6 +6,7 @@ module Mudblood.Contrib.MG
     , module Mudblood.Contrib.MG.Fight
     , module Mudblood.Contrib.MG.Spells
     , module Mudblood.Contrib.MG.Gilden
+    , module Mudblood.Contrib.MG.Profile
     ) where
 
 import Mudblood.Contrib.MG.State
@@ -15,3 +16,4 @@ import Mudblood.Contrib.MG.Report
 import Mudblood.Contrib.MG.Fight
 import Mudblood.Contrib.MG.Spells
 import Mudblood.Contrib.MG.Gilden
+import Mudblood.Contrib.MG.Profile
