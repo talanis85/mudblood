@@ -45,8 +45,8 @@ mgCommands = M.fromList
     , ("profile", Command ["name"] $ do
         popStringParam >>= lift . loadProfile
         )
-    , ("guild", cmdGuild)
-    , ("focus", cmdFocus)
+    , ("guild", Command ["name"] $ popStringParam >>= lift . setGuild)
+    , ("focus", Command ["name"] $ popStringParam >>= lift . setFocus)
     , ("walk", Command ["destination"] $ do
         map <- lift $ getMap
         dest <- popIntParam

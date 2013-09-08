@@ -5,12 +5,14 @@ module Mudblood.Contrib.MG.State
     , modifyStats
     , modifyTanjianStats, modifyZaubererStats
     , newMGState, modifyState, getState
-    -- * Commands to modify the state
-    , cmdFocus, cmdGuild
+    -- * Modify the state
+    , setFocus, setGuild
     -- * Widgets
     , mkMGStatWidgets
     , updateWidgetList
     ) where
+
+import Prelude hiding (error)
 
 import Data.Typeable
 import Data.Dynamic
@@ -81,21 +83,17 @@ modifyStats f = modifyState (\x -> x { mgStats = (f $ mgStats x) })
 modifyTanjianStats f = modifyState (\x -> x { mgTanjianStats = (f $ mgTanjianStats x) })
 modifyZaubererStats f = modifyState (\x -> x { mgZaubererStats = (f $ mgZaubererStats x) })
 
-cmdFocus :: MBCommand
-cmdFocus = Command ["name"] $ do
-    arg <- popStringParam
-    case arg of
-        "" -> lift $ modifyUserData $ \s -> s { mgFocus = Nothing }
-        f  -> lift $ modifyUserData $ \s -> s { mgFocus = Just f }
+setFocus :: String -> MB ()
+setFocus arg = case arg of
+    "" -> modifyUserData $ \s -> s { mgFocus = Nothing }
+    f  -> modifyUserData $ \s -> s { mgFocus = Just f }
 
-cmdGuild :: MBCommand
-cmdGuild = Command ["name"] $ do
-    arg <- popStringParam
-    case readGuild arg of
-        Nothing -> fail $ "Unbekannte Gilde: " ++ arg
-        Just g  -> do
-                   lift $ modifyUserData $ \s -> s { mgGuild = g }
-                   lift $ updateWidgetList
+setGuild :: String -> MB ()
+setGuild arg = case readGuild arg of
+    Nothing -> error $ "Unbekannte Gilde: " ++ arg
+    Just g  -> do
+               modifyUserData $ \s -> s { mgGuild = g }
+               updateWidgetList
 
 updateWidgetList :: MB ()
 updateWidgetList = do
