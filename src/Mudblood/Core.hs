@@ -48,7 +48,7 @@ import Mudblood.Text
 import Mudblood.Trigger
 import Mudblood.Command
 import Mudblood.Mapper.Map
-import Mudblood.GMCP
+import Data.GMCP
 
 import Debug.Trace
 
@@ -245,12 +245,12 @@ processSend str = do
 
 initGMCP :: MB ()
 initGMCP = do
-    sendBinary $ telnetNegToBytes $ TelnetNeg (Just CMD_DO) (Just OPT_GMCP) []        
-    sendBinary $ telnetNegToBytes $ telnetSubneg OPT_GMCP $ UTF8.encode $ dumpGMCP $ GMCP "Core.Hello" $
+    sendBinary $ toBinary $ TelnetNeg (Just CMD_DO) (Just OPT_GMCP) []        
+    sendBinary $ toBinary $ GMCP "Core.Hello" $
         JSObject $ toJSObject [ ("client", JSString $ toJSString "mudblood"),
                                 ("version", JSString $ toJSString "0.1")
                               ]
-    sendBinary $ telnetNegToBytes $ telnetSubneg OPT_GMCP $ UTF8.encode $ dumpGMCP $ GMCP "Core.Supports.Set" $
+    sendBinary $ toBinary $ GMCP "Core.Supports.Set" $
         JSArray $ [ JSString $ toJSString "MG.char 1"
                   , JSString $ toJSString "comm.channel 1"
                   , JSString $ toJSString "MG.room 1"

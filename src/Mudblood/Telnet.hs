@@ -1,9 +1,10 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, TypeSynonymInstances, FlexibleInstances #-}
 
 module Mudblood.Telnet
     ( TelnetSocket
     , TelnetIO
     , TelnetEvent (TelnetRawEvent, TelnetNegEvent, TelnetCloseEvent)
+    , TelnetSendable (toBinary)
     -- * Telnet socket primitives
     , telnetSend
     , telnetConnect
@@ -14,7 +15,6 @@ module Mudblood.Telnet
     , TelnetNeg (..)
     , TelnetCommand (..)
     , TelnetOption (..)
-    , telnetNegToBytes
     , telnetSubneg
     , telnetNegNaws
 ) where
@@ -32,6 +32,10 @@ import Control.Concurrent.STM
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString as B
 import Data.Binary.Put
+
+import Data.GMCP
+
+import qualified Codec.Binary.UTF8.String as UTF8
 
 import Network.Socket hiding (send, sendTo, recv, recvFrom)
 import Network.Socket.ByteString
@@ -260,6 +264,21 @@ telnetRecv =
                      in put' (state { tnState = st }) >> return (Right blocks)
   where get' = TelnetIO get
         put' s = TelnetIO $ put s
+
+class TelnetSendable a where
+    toBinary :: a -> [Word8]
+
+instance TelnetSendable [Word8] where
+    toBinary = id
+
+instance TelnetSendable String where
+    toBinary str = UTF8.encode str
+
+instance TelnetSendable TelnetNeg where
+    toBinary neg = telnetNegToBytes neg
+
+instance TelnetSendable GMCP where
+    toBinary gmcp = toBinary $ telnetSubneg OPT_GMCP $ UTF8.encode $ dumpGMCP gmcp
 
 telnetSend :: TelnetSocket -> [Word8] -> IO ()
 telnetSend sock dat = send sock (B.pack dat) >> return ()

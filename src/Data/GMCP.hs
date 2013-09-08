@@ -1,4 +1,4 @@
-module Mudblood.GMCP
+module Data.GMCP
     ( GMCP (..)
     , parseGMCP
     , dumpGMCP
