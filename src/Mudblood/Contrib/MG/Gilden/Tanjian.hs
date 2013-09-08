@@ -1,9 +1,15 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Mudblood.Contrib.MG.Gilden.Tanjian
     ( MGTanjianStats (..)
     , TriState (..)
     , mkMGTanjianStats
     , mkMGTanjianWidgets
+    -- * Lenses
+    , mgTanjianStatM, mgTanjianStatKO, mgTanjianStatTE, mgTanjianStatHA, mgTanjianStatAK
     ) where
+
+import Control.Lens
 
 import Mudblood
 
@@ -12,20 +18,22 @@ data TriState = On
               | Between
 
 data MGTanjianStats = MGTanjianStats
-    { mgTanjianStatM  :: TriState
-    , mgTanjianStatKO :: Bool
-    , mgTanjianStatTE :: TriState
-    , mgTanjianStatHA :: Bool
-    , mgTanjianStatAK :: TriState
+    { _mgTanjianStatM  :: TriState
+    , _mgTanjianStatKO :: Bool
+    , _mgTanjianStatTE :: TriState
+    , _mgTanjianStatHA :: Bool
+    , _mgTanjianStatAK :: TriState
     }
 
 mkMGTanjianStats = MGTanjianStats
-    { mgTanjianStatM  = Off
-    , mgTanjianStatKO = False
-    , mgTanjianStatTE = Off
-    , mgTanjianStatHA = False
-    , mgTanjianStatAK = Off
+    { _mgTanjianStatM  = Off
+    , _mgTanjianStatKO = False
+    , _mgTanjianStatTE = Off
+    , _mgTanjianStatHA = False
+    , _mgTanjianStatAK = Off
     }
+
+makeLenses ''MGTanjianStats
 
 mkMGTanjianWidgets :: MB MGTanjianStats -> [UIWidget]
 mkMGTanjianWidgets statfun =
@@ -33,12 +41,12 @@ mkMGTanjianWidgets statfun =
     , UIWidgetTable $ do
             stats <- statfun
             return
-                [ [ "Meditation:", showMeditation $ mgTanjianStatM stats ]
-                , [ "Kokoro:", showBool $ mgTanjianStatKO stats ]
-                , [ "Tegatana:", showTegatana $ mgTanjianStatTE stats ]
-                , [ "Omamori:", showOmamori $ mgTanjianStatTE stats ]
-                , [ "Hayai:", showBool $ mgTanjianStatHA stats ]
-                , [ "Akshara:", showAkshara $ mgTanjianStatAK stats ]
+                [ [ "Meditation:",  showMeditation $ stats ^. mgTanjianStatM ]
+                , [ "Kokoro:",      showBool $ stats ^. mgTanjianStatKO ]
+                , [ "Tegatana:",    showTegatana $ stats ^. mgTanjianStatTE ]
+                , [ "Omamori:",     showOmamori $ stats ^. mgTanjianStatTE ]
+                , [ "Hayai:",       showBool $ stats ^. mgTanjianStatHA ]
+                , [ "Akshara:",     showAkshara $ stats ^. mgTanjianStatAK ]
                 ]
     ]
   where

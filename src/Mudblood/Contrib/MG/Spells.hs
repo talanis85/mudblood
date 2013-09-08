@@ -20,7 +20,7 @@ begins _        _                 = Nothing
 
 spell :: (MBMonad m) => String -> m ()
 spell sp = do
-    focus <- getUserData >>= return . mgFocus
+    focus <- getU mgFocus
     case focus of
         Nothing -> send sp
         Just f  -> send $ replace "%f" f sp

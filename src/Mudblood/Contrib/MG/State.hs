@@ -1,17 +1,22 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable, TemplateHaskell #-}
 module Mudblood.Contrib.MG.State 
     ( MGState (..), mkMGState
     , MGStats (..)
     , MGChar (..)
-    , modifyStats, modifyChar
-    , modifyTanjianStats, modifyZaubererStats
-    , modifyState, getState
+    -- * Lenses
+    , getU, setU, updateMaybeU
+    , mgChar, mgStats, mgTanjianStats, mgZaubererStats, mgGuild, mgFocus, mgSettings, mgProfile
+    , mgCharName, mgCharRace, mgCharPresay, mgCharTitle, mgCharWizlevel, mgCharLevel, mgCharGuildLevel, mgCharGuildTitle
+    , mgStatLP, mgStatMLP, mgStatKP, mgStatMKP, mgStatVO, mgStatFR, mgStatG, mgStatB, mgStatT, mgStatF
+    , (^.)
     -- * Modify the state
     , setFocus, setGuild
     -- * Widgets
     , mkMGStatWidgets
     , updateWidgetList
     ) where
+
+import Control.Lens
 
 import Data.Typeable
 import Data.Dynamic
@@ -23,80 +28,87 @@ import Mudblood.Contrib.MG.Gilden
 import Mudblood.Contrib.MG.Settings
 
 data MGState = MGState
-    { mgChar          :: MGChar
-    , mgStats         :: MGStats
-    , mgTanjianStats  :: MGTanjianStats
-    , mgZaubererStats :: MGZaubererStats
+    { _mgChar          :: MGChar
+    , _mgStats         :: MGStats
+    , _mgTanjianStats  :: MGTanjianStats
+    , _mgZaubererStats :: MGZaubererStats
 
-    , mgGuild         :: MGGuild
-    , mgFocus         :: Maybe String
+    , _mgGuild         :: MGGuild
+    , _mgFocus         :: Maybe String
 
-    , mgSettings      :: MGSettings
+    , _mgSettings      :: MGSettings
 
-    , mgProfile       :: String
+    , _mgProfile       :: String
     }
   deriving (Typeable)
 
+mkMGState = MGState
+    { _mgChar            = mkMGChar
+    , _mgStats           = mkMGStats
+    , _mgTanjianStats    = mkMGTanjianStats
+    , _mgZaubererStats   = mkMGZaubererStats
+
+    , _mgGuild           = MGGuildAbenteurer
+    , _mgFocus           = Nothing
+
+    , _mgSettings        = mkMGSettings
+
+    , _mgProfile         = ""
+    }
+
 data MGChar = MGChar
-    { mgCharName        :: String
-    , mgCharRace        :: String
-    , mgCharPresay      :: String
-    , mgCharTitle       :: String
-    , mgCharWizlevel    :: Int
-    , mgCharLevel       :: Int
-    , mgCharGuildLevel  :: Int
-    , mgCharGuildTitle  :: String
+    { _mgCharName        :: String
+    , _mgCharRace        :: String
+    , _mgCharPresay      :: String
+    , _mgCharTitle       :: String
+    , _mgCharWizlevel    :: Int
+    , _mgCharLevel       :: Int
+    , _mgCharGuildLevel  :: Int
+    , _mgCharGuildTitle  :: String
     }
 
 mkMGChar = MGChar
-    { mgCharName        = "Jemand"
-    , mgCharRace        = "Etwas"
-    , mgCharPresay      = ""
-    , mgCharTitle       = ""
-    , mgCharWizlevel    = 0
-    , mgCharLevel       = 0
-    , mgCharGuildLevel  = 0
-    , mgCharGuildTitle  = ""
+    { _mgCharName        = "Jemand"
+    , _mgCharRace        = "Etwas"
+    , _mgCharPresay      = ""
+    , _mgCharTitle       = ""
+    , _mgCharWizlevel    = 0
+    , _mgCharLevel       = 0
+    , _mgCharGuildLevel  = 0
+    , _mgCharGuildTitle  = ""
     }
 
 data MGStats = MGStats
-    { mgStatLP      :: Int
-    , mgStatMLP     :: Int
-    , mgStatKP      :: Int
-    , mgStatMKP     :: Int
-    , mgStatVO      :: Int
-    , mgStatFR      :: String
-    , mgStatG       :: Int
-    , mgStatB       :: Bool
-    , mgStatT       :: Bool
-    , mgStatF       :: Bool
+    { _mgStatLP      :: Int
+    , _mgStatMLP     :: Int
+    , _mgStatKP      :: Int
+    , _mgStatMKP     :: Int
+    , _mgStatVO      :: Int
+    , _mgStatFR      :: String
+    , _mgStatG       :: Int
+    , _mgStatB       :: Bool
+    , _mgStatT       :: Bool
+    , _mgStatF       :: Bool
     }
 
-mkMGState = MGState
-    { mgChar = mkMGChar
-    , mgStats = MGStats
-        { mgStatLP      = 0
-        , mgStatMLP     = 0
-        , mgStatKP      = 0
-        , mgStatMKP     = 0
-        , mgStatVO      = 0
-        , mgStatFR      = ""
-        , mgStatG       = 0
-        , mgStatB       = False
-        , mgStatT       = False
-        , mgStatF       = False
-        }
-    , mgTanjianStats    = mkMGTanjianStats
-    , mgZaubererStats   = mkMGZaubererStats
-
-    , mgGuild           = MGGuildAbenteurer
-    , mgFocus           = Nothing
-
-    , mgSettings        = mkMGSettings
-
-    , mgProfile         = ""
+mkMGStats = MGStats
+    { _mgStatLP      = 0
+    , _mgStatMLP     = 0
+    , _mgStatKP      = 0
+    , _mgStatMKP     = 0
+    , _mgStatVO      = 0
+    , _mgStatFR      = ""
+    , _mgStatG       = 0
+    , _mgStatB       = False
+    , _mgStatT       = False
+    , _mgStatF       = False
     }
 
+makeLenses ''MGStats
+makeLenses ''MGChar
+makeLenses ''MGState
+
+{-
 modifyState f = modifyUserData f
 
 getState :: (MBMonad m) => m MGState
@@ -106,54 +118,62 @@ modifyChar f = modifyState (\x -> x { mgChar = (f $ mgChar x) })
 modifyStats f = modifyState (\x -> x { mgStats = (f $ mgStats x) })
 modifyTanjianStats f = modifyState (\x -> x { mgTanjianStats = (f $ mgTanjianStats x) })
 modifyZaubererStats f = modifyState (\x -> x { mgZaubererStats = (f $ mgZaubererStats x) })
+-}
+
+getU a = getUserData >>= (return . (^. a))
+setU a v = modifyUserData $ set a v
+
+updateMaybeU a v = case v of
+    Nothing -> return ()
+    Just v' -> setU a v'
 
 setFocus :: String -> MB ()
 setFocus arg = case arg of
-    "" -> modifyUserData $ \s -> s { mgFocus = Nothing }
-    f  -> modifyUserData $ \s -> s { mgFocus = Just f }
+    "" -> setU mgFocus Nothing
+    f  -> setU mgFocus (Just "hallo")
 
 setGuild :: String -> MB ()
 setGuild arg = case readGuild arg of
     Nothing -> mbError $ "Unbekannte Gilde: " ++ arg
     Just g  -> do
-               modifyUserData $ \s -> s { mgGuild = g }
+               setU mgGuild g
                updateWidgetList
 
 updateWidgetList :: MB ()
 updateWidgetList = do
-    guild <- getUserData >>= return . mgGuild
+    guild <- getU mgGuild
     modifyWidgets $ \_ ->
         [ UIWidgetText $ return "--- MorgenGrauen ---"
         ] ++ mkMGCharWidgets
           ++ mkMGStatWidgets
           ++ mkMGMapWidgets
           ++ case guild of
-                MGGuildZauberer -> mkMGZaubererWidgets (getUserData >>= return . mgZaubererStats)
-                MGGuildTanjian -> mkMGTanjianWidgets (getUserData >>= return . mgTanjianStats)
+                MGGuildZauberer -> mkMGZaubererWidgets $ getU mgZaubererStats
+                MGGuildTanjian -> mkMGTanjianWidgets $ getU mgTanjianStats
                 _ -> []
 
 mkMGCharWidgets =
     [ UIWidgetTable $ do
-        char <- getUserData >>= return . mgChar
+        char <- getU mgChar
         return
-            [ [ "Name:", (mgCharName char) ]
-            , [ "Rasse:", (mgCharRace char) ]
-            , [ "Level:", (show $ mgCharLevel char) ]
+            [ [ "Name:", (char ^. mgCharName) ]
+            , [ "Rasse:", (char ^. mgCharRace) ]
+            , [ "Level:", (show $ char ^. mgCharLevel) ]
             ]
     ]
 
 mkMGStatWidgets =
     [ UIWidgetTable $ do
-        stats <- getUserData >>= return . mgStats
+        stats <- getU mgStats
         return
-            [ [ "LP:", (show $ mgStatLP stats) ++ " (" ++ (show $ mgStatMLP stats) ++ ")" ]
-            , [ "KP:", (show $ mgStatKP stats) ++ " (" ++ (show $ mgStatMKP stats) ++ ")" ]
-            , [ "Vorsicht:", (show $ mgStatVO stats) ]
-            , [ "Fluchtrichtung:", (show $ mgStatFR stats) ]
-            , [ "Gift:", (showGift $ mgStatG stats) ]
-            , [ "Blind:", (showBool $ mgStatB stats) ]
-            , [ "Taub:", (showBool $ mgStatT stats) ]
-            , [ "Frosch:", (showBool $ mgStatF stats) ]
+            [ [ "LP:", (show $ stats ^. mgStatLP) ++ " (" ++ (show $ stats ^. mgStatMLP) ++ ")" ]
+            , [ "KP:", (show $ stats ^. mgStatKP) ++ " (" ++ (show $ stats ^. mgStatMKP) ++ ")" ]
+            , [ "Vorsicht:", (show $ stats ^. mgStatVO) ]
+            , [ "Fluchtrichtung:", (show $ stats ^. mgStatFR) ]
+            , [ "Gift:", (showGift $ stats ^. mgStatG) ]
+            , [ "Blind:", (showBool $ stats ^. mgStatB) ]
+            , [ "Taub:", (showBool $ stats ^. mgStatT) ]
+            , [ "Frosch:", (showBool $ stats ^. mgStatF) ]
             ]
     ]
   where

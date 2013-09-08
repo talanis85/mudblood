@@ -2,7 +2,7 @@ module Data.GMCP
     ( GMCP (..)
     , parseGMCP
     , dumpGMCP
-    , getStringFieldDefault, getIntFieldDefault
+    , getStringField, getIntField
     , module Text.JSON.Types
     ) where
 
@@ -38,18 +38,18 @@ dumpGMCP (GMCP mod dat) = mod ++ " " ++ (encode dat)
 
 -- helpers
 
-getStringFieldDefault :: String -> String -> GMCP -> String
-getStringFieldDefault def key gmcp =
+getStringField :: String -> GMCP -> Maybe String
+getStringField key gmcp =
     case gmcpData gmcp of
         JSObject ob -> case get_field ob key of
-            Just (JSString s) -> fromJSString s
-            _ -> def
-        _ -> def
+            Just (JSString s) -> Just $ fromJSString s
+            _ -> Nothing
+        _ -> Nothing
 
-getIntFieldDefault :: Int -> String -> GMCP -> Int
-getIntFieldDefault def key gmcp =
+getIntField :: String -> GMCP -> Maybe Int
+getIntField key gmcp =
     case gmcpData gmcp of
         JSObject ob -> case get_field ob key of
-            Just (JSRational _ v) -> round v
-            _ -> def
-        _ -> def
+            Just (JSRational _ v) -> Just $ round v
+            _ -> Nothing
+        _ -> Nothing

@@ -1,8 +1,15 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Mudblood.Contrib.MG.Gilden.Zauberer
     ( MGZaubererStats (..), MGZaubererHand (..), MGZaubererSchutz (..)
     , mkMGZaubererStats
     , mkMGZaubererWidgets
+    -- * Lenses
+    , mgZaubererStatSP, mgZaubererStatSPMax, mgZaubererStatH, mgZaubererStatS, mgZaubererStatXH
+    , mgZaubererStatW, mgZaubererStatB, mgZaubererStatE
     ) where
+
+import Control.Lens
 
 import Mudblood
 
@@ -17,26 +24,28 @@ data MGZaubererSchutz = MGZaubererSchutzAus
                       | MGZaubererSchutzSchutzhuelle
 
 data MGZaubererStats = MGZaubererStats
-    { mgZaubererStatSP    :: Int
-    , mgZaubererStatSPMax :: Int
-    , mgZaubererStatH     :: MGZaubererHand
-    , mgZaubererStatS     :: MGZaubererSchutz
-    , mgZaubererStatXH    :: Bool
-    , mgZaubererStatW     :: Bool
-    , mgZaubererStatB     :: Bool
-    , mgZaubererStatE     :: Bool
+    { _mgZaubererStatSP    :: Int
+    , _mgZaubererStatSPMax :: Int
+    , _mgZaubererStatH     :: MGZaubererHand
+    , _mgZaubererStatS     :: MGZaubererSchutz
+    , _mgZaubererStatXH    :: Bool
+    , _mgZaubererStatW     :: Bool
+    , _mgZaubererStatB     :: Bool
+    , _mgZaubererStatE     :: Bool
     }
 
 mkMGZaubererStats = MGZaubererStats
-    { mgZaubererStatSP      = 0
-    , mgZaubererStatSPMax   = 0
-    , mgZaubererStatH       = MGZaubererHandAus
-    , mgZaubererStatS       = MGZaubererSchutzAus
-    , mgZaubererStatXH      = False
-    , mgZaubererStatW       = False
-    , mgZaubererStatB       = False
-    , mgZaubererStatE       = False
+    { _mgZaubererStatSP      = 0
+    , _mgZaubererStatSPMax   = 0
+    , _mgZaubererStatH       = MGZaubererHandAus
+    , _mgZaubererStatS       = MGZaubererSchutzAus
+    , _mgZaubererStatXH      = False
+    , _mgZaubererStatW       = False
+    , _mgZaubererStatB       = False
+    , _mgZaubererStatE       = False
     }
+
+makeLenses ''MGZaubererStats
 
 mkMGZaubererWidgets :: MB MGZaubererStats -> [UIWidget]
 mkMGZaubererWidgets statfun =
@@ -44,11 +53,11 @@ mkMGZaubererWidgets statfun =
     , UIWidgetTable $ do
             stats <- statfun
             return
-                [ [ "SP:", (show $ mgZaubererStatSP stats) ++ " (" ++ (show $ mgZaubererStatSPMax stats) ++ ")" ]
-                , [ "Schutz:", showSchutz $ mgZaubererStatS stats ]
-                , [ "Hand:", showHand $ mgZaubererStatH stats ]
-                , [ "Extrahand:", showExtrahand $ mgZaubererStatXH stats ]
-                , [ "Wille:", showWille $ mgZaubererStatW stats ]
+                [ [ "SP:",          (show $ stats ^. mgZaubererStatSP) ++ " (" ++ (show $ stats ^. mgZaubererStatSPMax) ++ ")" ]
+                , [ "Schutz:",      showSchutz $ stats ^. mgZaubererStatS ]
+                , [ "Hand:",        showHand $ stats ^. mgZaubererStatH ]
+                , [ "Extrahand:",   showExtrahand $ stats ^. mgZaubererStatXH ]
+                , [ "Wille:",       showWille $ stats ^. mgZaubererStatW ]
                 ]
     ]
   where

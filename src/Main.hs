@@ -75,9 +75,9 @@ mgCommands = M.fromList
         )
     , ("set", Command ["option", "value"] $ do
         option <- popStringParam
-        settings <- lift getUserData >>= return . mgSettings
+        settings <- lift $ getU mgSettings
         newSettings <- mgSettingsPut settings option
-        lift $ modifyUserData $ \s -> s { mgSettings = newSettings }
+        lift $ setU mgSettings newSettings
       )
     ]
 
@@ -87,33 +87,31 @@ gmcpTrigger = Permanent $ \ev -> do
     case ev of
         GMCPTEvent g -> do
             case gmcpModule g of
-                "MG.char.base" -> modifyChar $ \s -> s
-                    { mgCharName = getStringFieldDefault (mgCharName s) "name" g
-                    , mgCharRace = getStringFieldDefault (mgCharRace s) "race" g
-                    , mgCharPresay = getStringFieldDefault (mgCharPresay s) "presay" g
-                    , mgCharTitle = getStringFieldDefault (mgCharTitle s) "title" g
-                    , mgCharWizlevel = getIntFieldDefault (mgCharWizlevel s) "wizlevel" g
-                    }
-                "MG.char.info" -> modifyChar $ \s -> s
-                    { mgCharLevel = getIntFieldDefault (mgCharLevel s) "level" g
-                    , mgCharGuildLevel = getIntFieldDefault (mgCharGuildLevel s) "guild_level" g
-                    , mgCharGuildTitle = getStringFieldDefault (mgCharGuildTitle s) "guild_title" g
-                    }
-                "MG.char.maxvitals" -> modifyStats $ \s -> s
-                    { mgStatMLP = getIntFieldDefault (mgStatMLP s) "max_hp" g
-                    , mgStatMKP = getIntFieldDefault (mgStatMKP s) "max_sp" g
-                    }
-                "MG.char.vitals" -> modifyStats $ \s -> s
-                    { mgStatLP = getIntFieldDefault (mgStatLP s) "hp" g
-                    , mgStatKP = getIntFieldDefault (mgStatKP s) "sp" g
-                    }
-                "comm.channel" -> echoA $ setFg Blue $ toAttrString $ getStringFieldDefault "" "msg" g
+                "MG.char.base" -> do
+                    updateMaybeU (mgChar . mgCharName)      $ getStringField "name" g
+                    updateMaybeU (mgChar . mgCharRace)      $ getStringField "race" g
+                    updateMaybeU (mgChar . mgCharPresay)    $ getStringField "presay" g
+                    updateMaybeU (mgChar . mgCharTitle)     $ getStringField "title" g
+                    updateMaybeU (mgChar . mgCharWizlevel)  $ getIntField "wizlevel" g
+                "MG.char.info" -> do
+                    updateMaybeU (mgChar . mgCharLevel)      $ getIntField "level" g
+                    updateMaybeU (mgChar . mgCharGuildLevel) $ getIntField "guild_level" g
+                    updateMaybeU (mgChar . mgCharGuildTitle) $ getStringField "guild_title" g
+                "MG.char.maxvitals" -> do
+                    updateMaybeU (mgStats . mgStatMLP)  $ getIntField "max_hp" g
+                    updateMaybeU (mgStats . mgStatMKP)  $ getIntField "max_sp" g
+                "MG.char.vitals" -> do
+                    updateMaybeU (mgStats . mgStatLP)   $ getIntField "hp" g
+                    updateMaybeU (mgStats . mgStatKP)   $ getIntField "sp" g
+                "comm.channel" -> case getStringField "msg" g of
+                    Just msg -> echoA $ setFg Blue $ toAttrString msg
+                    Nothing -> return ()
                 _ -> return ()
             return [ev]
         _ -> return [ev]
 
 
-triggers = gmcpTrigger :>>: fightColorizer :>>: zaubererreportTrigger defaultZaubererStatus :>>: colorTriggers :>>: moveTrigger
+triggers = gmcpTrigger :>>: fightColorizer :>>: zaubererreportTrigger :>>: colorTriggers :>>: moveTrigger
 
 tanjianBindings = [ ([KF1],  spell "meditation")
                   , ([KF2],  spell "kokoro")
