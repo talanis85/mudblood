@@ -54,10 +54,8 @@ runTriggerFlow f (f1 :||: f2) arg = do
     (res2, t2) <- runTriggerFlow f f2 arg
 
     let t3 = case (t1, t2) of
-                (Nothing, Nothing) -> Nothing
-                (Just a, Nothing) -> Just a
-                (Nothing, Just b) -> Just b
                 (Just a, Just b) -> Just (a :||: b)
+                (a, b)           -> a `mplus` b
 
     return (res2, t3)
 
@@ -66,10 +64,8 @@ runTriggerFlow f (f1 :>>: f2) arg = do
     (res2, t2) <- foldTriggerFlow f f2 res1
 
     let t3 = case (t1, t2) of
-                (Nothing, Nothing) -> Nothing
-                (Just a, Nothing) -> Just a
-                (Nothing, Just b) -> Just b
                 (Just a, Just b) -> Just (a :>>: b)
+                (a, b)           -> a `mplus` b
 
     return (mconcat res2, t3)
 
