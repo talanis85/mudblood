@@ -27,11 +27,11 @@ walker f path = Volatile $ walker' f path
                 WalkerPause -> failT
                 WalkerContinue -> do
                                   send s
-                                  modifyMap $ step s
+                                  modifyMap $ mapStep s
                                   ev' <- yield [ev]
                                   walker' f rest ev'
 
 moveTrigger :: MBTriggerFlow
 moveTrigger = Permanent $ guardSendEvent >>> \l -> do
-                modifyMap $ step l
+                modifyMap $ mapStep l
                 returnSend l

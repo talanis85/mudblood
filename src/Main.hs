@@ -64,7 +64,7 @@ mgCommands = M.fromList
                             lift $ echo $ "Path is: " ++ show (first:path)
                             lift $ modifyTriggers $ fmap (:>>: (walker walkerFun path))
                             lift $ send first
-                            lift $ modifyMap $ step first
+                            lift $ modifyMap $ mapStep first
         )
     , ("loadmap", Command ["filename"] $ do
         filename <- popStringParam

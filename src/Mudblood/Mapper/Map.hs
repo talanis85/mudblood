@@ -11,9 +11,10 @@ module Mudblood.Mapper.Map
     -- * Loading maps
     , mapEmpty, mapFromString, mapFromFile
     -- * Transforming a map
-    , next, step
+    , mapStep
     -- * Querying a map
     , mapCurrentData
+    , findNextRoom
     , shortestPath
     -- * Handling User Data
     , getUserValue, putUserValue
@@ -238,15 +239,15 @@ shortestPath m weightfun src dest = let graph = mapGraph m
 
 ------------------------------------------------------------------------------
 
-next :: String -> Map -> Node -> Maybe Node
-next key m n = case filter (hasKey key . snd) (lsuc (mapGraph m) n) of
+findNextRoom :: String -> Map -> Node -> Maybe Node
+findNextRoom key m n = case filter (hasKey key . snd) (lsuc (mapGraph m) n) of
     [] -> Nothing
     (x:xs) -> Just (fst x)
   where
     hasKey key l = exitKey l == key
 
-step :: String -> Map -> Map
-step key m = case next key m (mapCurrentId m) of
+mapStep :: String -> Map -> Map
+mapStep key m = case findNextRoom key m (mapCurrentId m) of
     Nothing -> m
     Just n  -> m { mapCurrentId = n }
 
