@@ -105,7 +105,7 @@ gmcpTrigger = Permanent $ \ev -> do
         _ -> return [ev]
 
 
-triggers = gmcpTrigger :>>: fightColorizer :>>: zaubererreportTrigger :>>: colorTriggers :>>: moveTrigger
+triggers = gmcpTrigger :>>: fightColorizer :>>: reportTrigger :>>: colorTriggers :>>: moveTrigger
 
 tanjianBindings = [ ([KF1],  spell "meditation")
                   , ([KF2],  spell "kokoro")

@@ -1,6 +1,5 @@
 module Mudblood.Contrib.MG.Report
-    ( tanjianreportTrigger
-    , zaubererreportTrigger
+    ( reportTrigger
     ) where
 
 import Text.Regex.PCRE
@@ -9,8 +8,18 @@ import Mudblood
 import Mudblood.Contrib.MG.State
 import Mudblood.Contrib.MG.Gilden
 
-tanjianreportTrigger :: MBTriggerFlow
-tanjianreportTrigger = Permanent $ guardLine >=> \x ->
+reportTrigger :: MBTriggerFlow
+reportTrigger = Permanent $ guardLine >=> \x -> do
+    guild <- getU mgGuild
+    case guild of
+        MGGuildZauberer -> mgZaubererReport x
+        MGGuildTanjian  -> mgTanjianReport x
+        _               -> returnLine x
+
+
+------------------------------------------------------------------------------
+
+mgTanjianReport x =
     case x =~ "^\\$REPORT\\$ (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) '(.+)' ([JN])([JN])([JN])([JN]) (\\w+) ([ -+]) (\\w+) (\\w+) (\\w+) ([JjN]) (\\d+)" :: [[String]] of
         r:rs -> do
             setU (mgStats . mgStatLP)   (read $ r !! 1)
@@ -45,12 +54,9 @@ tanjianreportTrigger = Permanent $ guardLine >=> \x ->
                     _   -> Off
 
             return []
-        [] -> return [LineTEvent x]
+        [] -> returnLine x
 
-------------------------------------------------------------------------------
-
-zaubererreportTrigger :: MBTriggerFlow
-zaubererreportTrigger = Permanent $ guardLine >=> \x ->
+mgZaubererReport x =
     case x =~ "^\\$REPORT\\$ (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) '(.+)' ([JN])([JN])([JN])([JN]) ([FES ]) ([W ]) ([X ]) ([sSVZ ]) ([B ]) ([E ]) (\\w+)" :: [[String]] of
         r:rs -> do
             setU (mgStats . mgStatLP)   (read $ r !! 1)
@@ -83,4 +89,4 @@ zaubererreportTrigger = Permanent $ guardLine >=> \x ->
             setU (mgZaubererStats . mgZaubererStatE)        $ if (r !! 18) == "E" then True else False
 
             return []
-        [] -> return [LineTEvent x]
+        [] -> returnLine x
