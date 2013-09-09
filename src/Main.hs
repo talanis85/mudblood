@@ -1,8 +1,6 @@
 import Mudblood
 import Mudblood.Screen.Gtk
 
-import Mudblood.User.Regex
-
 import Data.Array
 import Data.Dynamic
 import Data.GMCP
@@ -16,10 +14,6 @@ import qualified Data.Map as M
 import Text.Printf
 
 import Mudblood.Contrib.MG
-
-import Mudblood.User.Trigger
-import Mudblood.Mapper.Map
-import Mudblood.Mapper.Walk
 
 -- COMMANDS ------------------------------------------------------------
 

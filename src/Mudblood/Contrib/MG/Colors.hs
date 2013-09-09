@@ -3,6 +3,7 @@ module Mudblood.Contrib.MG.Colors
     ) where
 
 import Mudblood
+import Text.Regex.PCRE
 
 colorRegex col pat = Permanent $ guardLineEvent >>> \s ->
     if s =~ pat :: Bool then returnLine $ setFg col s

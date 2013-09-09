@@ -1,123 +1,95 @@
-{-# LANGUAGE ExistentialQuantification, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE ExistentialQuantification #-}
 
 module Mudblood.Trigger
-    ( Trigger
-    , (>>>), (|||)
-    , TriggerF (Result, Yield, Fail, Action)
-    , TriggerResult (TResult, TYield, TFail)
-    , TriggerFlow (Permanent, Volatile, (:||:), (:>>:))
-    , runTriggerFlow
-    , Free (Pure, Free)
-    , failT, yield, --echo, send, getUserData, putUserData, putUIString, runIO
+    ( module Control.Trigger
+    , MBTriggerF (..)
+    -- * The trigger event type
+    , TriggerEvent (LineTEvent, SendTEvent, TelnetTEvent, GMCPTEvent)
+    -- * Convenient type aliases
+    , MBTrigger, MBTriggerFlow
+    -- * Trigger functions
+    , guard, guardLineEvent, guardSendEvent
+    -- ** Yielding
+    , yieldLine, yieldSend
+    -- ** Waiting
+    , waitForLine, waitForSend
+    -- ** Returning
+    , returnLine, returnSend
     ) where
 
-import Control.Applicative
-import Control.Monad
-import Control.Monad.Free
-import Data.Monoid
-import Data.Dynamic (Dynamic)
-import Data.Typeable
+import Control.Trigger
 
--- A TriggerFlow is a flow chart of triggers. Triggers can either be Permanent or
--- Volatile. They can be combined in sequence or parallel.
+import Data.Dynamic
 
-data TriggerFlow f t = Permanent (t -> Trigger f t [t] [t])
-                     | Volatile (t -> Trigger f t [t] [t])
-                     | TriggerFlow f t :||: TriggerFlow f t
-                     | TriggerFlow f t :>>: TriggerFlow f t
+import Mudblood.Telnet
+import Mudblood.UI
+import Mudblood.Text
+import Mudblood.Mapper.Map
+import Data.GMCP
 
-infixr 9 :||:
-infixr 9 :>>:
+data MBTriggerF i o = forall a. RunIO (IO a) (a -> o)
+                    | Echo String o
+                    | Send Communication o
+                    | GetUserData (Dynamic -> o)
+                    | PutUserData Dynamic o
+                    | GetMap (Map -> o)
+                    | PutMap Map o
+                    | PutUI UIAction o
 
-instance Show (TriggerFlow f t) where
-    show (Permanent t) = "Permanent"
-    show (Volatile t) = "Volatile"
-    show (a :>>: b) = (show a) ++ " :>>: " ++ (show b)
-    show (a :||: b) = (show a) ++ " :||: " ++ (show b)
+instance Functor (MBTriggerF i) where
+    fmap f (RunIO io g) = RunIO io $ f . g
+    fmap f (Echo s x) = Echo s $ f x
+    fmap f (Send s x) = Send s $ f x
+    fmap f (GetUserData g) = GetUserData $ f . g
+    fmap f (PutUserData d x) = PutUserData d $ f x
+    fmap f (PutUI a x) = PutUI a $ f x
+    fmap f (GetMap g) = GetMap $ f . g
+    fmap f (PutMap d x) = PutMap d $ f x
 
-runTriggerFlow :: (Applicative m, Monad m, Functor f)
-                            => (Trigger f t [t] [t] -> m (TriggerResult f t [t] [t]))
-                            -> TriggerFlow f t
-                            -> t
-                            -> m ([t], Maybe (TriggerFlow f t))
+type MBTrigger a = Trigger (MBTriggerF TriggerEvent) TriggerEvent [TriggerEvent] a
+type MBTriggerFlow = TriggerFlow (MBTriggerF TriggerEvent) TriggerEvent
 
-runTriggerFlow f (Permanent t) arg = run <$> f (t arg)
-    where run res = case res of
-            TResult v -> (v, Just (Permanent t))
-            TYield v g -> (v, Just (Volatile g :>>: Permanent t))
-            TFail -> ([arg], Just (Permanent t))
+data TriggerEvent = LineTEvent AttrString   -- ^ Emitted when a line was received from the host
+                  | SendTEvent String       -- ^ Emitted when the user wants to send a line of input
+                  | TelnetTEvent TelnetNeg  -- ^ Emitted when a telnet negotiation is received
+                  | GMCPTEvent GMCP         -- ^ Emitted when a GMCP telneg is received
+    deriving (Eq)
 
-runTriggerFlow f (Volatile t) arg = run <$> f (t arg)
-    where run res = case res of
-            TResult v -> (v, Nothing)
-            TYield v g -> (v, Just (Volatile g))
-            TFail -> ([arg], Just (Volatile t))
+-- | Fail if the condition is False.
+guard :: (Functor f) => Bool -> Trigger f i y ()
+guard b = if b then return () else failT
 
-runTriggerFlow f (f1 :||: f2) arg = do
-    (res1, t1) <- runTriggerFlow f f1 arg
-    (res2, t2) <- runTriggerFlow f f2 arg
+guardLineEvent :: (Functor f) => TriggerEvent -> Trigger f i y [AttrString]
+guardLineEvent ev = case ev of
+    LineTEvent s -> return [s]
+    _            -> failT
 
-    let t3 = case (t1, t2) of
-                (Nothing, Nothing) -> Nothing
-                (Just a, Nothing) -> Just a
-                (Nothing, Just b) -> Just b
-                (Just a, Just b) -> Just (a :||: b)
+guardSendEvent :: (Functor f) => TriggerEvent -> Trigger f i y [String]
+guardSendEvent ev = case ev of
+    SendTEvent s -> return [s]
+    _            -> failT
 
-    return (res2, t3)
+-- | Yield a line event
+yieldLine :: (Functor f) => AttrString -> Trigger f i [TriggerEvent] i
+yieldLine x = yield [LineTEvent x]
 
-runTriggerFlow f (f1 :>>: f2) arg = do
-    (res1, t1) <- runTriggerFlow f f1 arg
-    (res2, t2) <- foldTriggerFlow f f2 res1
+-- | Yield a send event
+yieldSend :: (Functor f) => String -> Trigger f i [TriggerEvent] i
+yieldSend x = yield [SendTEvent x]
 
-    let t3 = case (t1, t2) of
-                (Nothing, Nothing) -> Nothing
-                (Just a, Nothing) -> Just a
-                (Nothing, Just b) -> Just b
-                (Just a, Just b) -> Just (a :>>: b)
+-- | Wait for a line event
+waitForLine :: (Functor f) => TriggerEvent -> Trigger f i y AttrString
+waitForLine ev = case ev of
+    LineTEvent s -> return s
+    _            -> failT
 
-    return (mconcat res2, t3)
+-- | Wait for a send event
+waitForSend :: (Functor f) => TriggerEvent -> Trigger f i y String
+waitForSend ev = case ev of
+    SendTEvent s -> return s
+    _            -> failT
 
-  where
-    foldTriggerFlow f tf [] = return ([], Just tf)
-    foldTriggerFlow f tf (x:xs) = do
-        (r, t) <- runTriggerFlow f tf x
-        (rest, trest) <- case t of
-            Just t' -> foldTriggerFlow f t' xs
-            Nothing -> return ([], Nothing)
-        return (r:rest, trest)
-
-
-data TriggerResult f i y o = TResult o
-                           | TYield y (i -> Trigger f i y o)
-                           | TFail
-
--- Trigger functor
-
-data TriggerF f i y o = Result o
-                      | Yield y (i -> o)
-                      | Fail
-                      | Action (f o)
-
-instance (Functor f) => Functor (TriggerF f i y) where
-    fmap f (Result o) = Result $ f o
-    fmap f (Yield o g) = Yield o $ f . g
-    fmap f Fail = Fail
-    fmap f (Action a) = Action (fmap f a)
-
--- Free monad of trigger functor
-
-type Trigger f i y = Free (TriggerF f i y)
-
-(>>>) :: (Monad m) => (a -> m [b]) -> (b -> m [c]) -> (a -> m [c])
-a >>> b = a >=> mapM b >=> return . concat
-
-(|||) :: (Applicative f) => (a -> f [b]) -> (a -> f [b]) -> (a -> f [b])
-a ||| b = \x -> (++) <$> a x <*> b x
-
--- Trigger primitives
-
-failT :: (Functor f) => Trigger f i y o
-failT = liftF $ Fail
-
-yield :: (Functor f) => y -> Trigger f i y i
-yield x = liftF $ Yield x id
+-- | Return a line event
+returnLine x = return [LineTEvent x]
+-- | Return a send event
+returnSend x = return [SendTEvent x]

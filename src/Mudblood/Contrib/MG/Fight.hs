@@ -7,6 +7,8 @@ import Data.Monoid
 
 import Mudblood
 
+import Text.Regex.PCRE
+
 attackMap = [ ("verfehlst ([^%.]+)",                                0,   0,   "")
             , ("kitzelst (.+) am Bauch",                            1,   1,   "kitzelst")
             , ("kratzt ([^%.]+)",                                   2,   3,   "kratzt")

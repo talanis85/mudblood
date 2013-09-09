@@ -3,7 +3,7 @@ module Mudblood.Contrib.MG.Report
     , zaubererreportTrigger
     ) where
 
-import Text.Printf (printf)
+import Text.Regex.PCRE
 
 import Mudblood
 import Mudblood.Contrib.MG.State

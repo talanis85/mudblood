@@ -4,7 +4,6 @@ module Mudblood
     , module Mudblood.Text
     , module Mudblood.Command
     , module Mudblood.Keys
-    , module Mudblood.User
     , module Mudblood.UI
     , module Mudblood.Mapper
     , module Mudblood.Paths
@@ -15,7 +14,6 @@ import Mudblood.Trigger
 import Mudblood.Text
 import Mudblood.Command
 import Mudblood.Keys
-import Mudblood.User
 import Mudblood.UI
 import Mudblood.Mapper
 import Mudblood.Paths

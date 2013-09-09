@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses #-}
+
 module Mudblood.Text
     (
       -- * Attributed strings
@@ -21,6 +23,8 @@ import Control.Monad
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language (haskellDef)
+
+import Text.Regex.PCRE
 
 data Style = StyleNormal | StyleBold | StyleUnderline
     deriving (Show, Eq)
@@ -72,6 +76,22 @@ instance Monoid AttrString where
 
 instance Show AttrString where
     show (AttrString s) = map fst s
+
+instance Extract AttrString where
+    empty = toAttrString ""
+    before i s = toAttrString $ before i $ fromAttrString s
+    after i s = toAttrString $ after i $ fromAttrString s
+    extract w s = toAttrString $ extract w $ fromAttrString s
+
+instance RegexContext Regex AttrString [[String]] where
+    match r s = map (map fromAttrString) (match r s)
+    matchM r s = do
+        ret <- matchM r s
+        return $ map (map fromAttrString) ret
+
+instance RegexLike Regex AttrString where
+    matchOnce r s = matchOnce r (fromAttrString s)
+    matchAll r s = matchAll r (fromAttrString s)
 
 -- | Decompose an AttrString into (string, attribute) pairs.
 groupAttrString :: AttrString -> [(String, Attr)]

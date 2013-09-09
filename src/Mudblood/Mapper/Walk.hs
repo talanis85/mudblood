@@ -11,7 +11,6 @@ import qualified Data.Graph.Inductive as Gr
 import Mudblood.Core
 import Mudblood.Trigger
 import Mudblood.Mapper.Map
-import Mudblood.User
 
 data WalkerControl = WalkerStop
                    | WalkerPause

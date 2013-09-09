@@ -15,11 +15,6 @@ module Mudblood.Core
     , connect, modifyTriggers
     , initGMCP
     , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap)
-    -- * Events
-    -- ** The trigger event type
-    , TriggerEvent (LineTEvent, SendTEvent, TelnetTEvent, GMCPTEvent)
-    -- ** Convenient type aliases
-    , MBTrigger, MBTriggerFlow
     -- * Widgets
     , UIWidget (..)
     , getWidgets, modifyWidgets
@@ -188,17 +183,6 @@ type MBCommand = Command MB
 
 --------------------------------------------------------------------------------------------------
 
-type MBTrigger a = Trigger (MBTriggerF TriggerEvent) TriggerEvent [TriggerEvent] a
-type MBTriggerFlow = TriggerFlow (MBTriggerF TriggerEvent) TriggerEvent
-
-data TriggerEvent = LineTEvent AttrString   -- ^ Emitted when a line was received from the host
-                  | SendTEvent String       -- ^ Emitted when the user wants to send a line of input
-                  | TelnetTEvent TelnetNeg  -- ^ Emitted when a telnet negotiation is received
-                  | GMCPTEvent GMCP         -- ^ Emitted when a GMCP telneg is received
-    deriving (Eq)
-
---------------------------------------------------------------------------------------------------
-
 -- | Parse and execute a command
 command :: String -> MB ()
 command c = case parseCommand c of
@@ -314,25 +298,6 @@ instance MBMonad MB where
                   dispatchUI $ UIUpdateMap d
 
 --------------------------------------------------------------------------------------------------
-
-data MBTriggerF i o = forall a. RunIO (IO a) (a -> o)
-                    | Echo String o
-                    | Send Communication o
-                    | GetUserData (Dynamic -> o)
-                    | PutUserData Dynamic o
-                    | GetMap (Map -> o)
-                    | PutMap Map o
-                    | PutUI UIAction o
-
-instance Functor (MBTriggerF i) where
-    fmap f (RunIO io g) = RunIO io $ f . g
-    fmap f (Echo s x) = Echo s $ f x
-    fmap f (Send s x) = Send s $ f x
-    fmap f (GetUserData g) = GetUserData $ f . g
-    fmap f (PutUserData d x) = PutUserData d $ f x
-    fmap f (PutUI a x) = PutUI a $ f x
-    fmap f (GetMap g) = GetMap $ f . g
-    fmap f (PutMap d x) = PutMap d $ f x
 
 instance MBMonad (Trigger (MBTriggerF i) i y) where
     send s = liftF $ Action $ Send (Communication s) ()
