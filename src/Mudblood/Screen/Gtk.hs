@@ -185,6 +185,9 @@ appendToMainBuffer astr = do
     liftIO $ G.textBufferInsert mainbuf endIter $ "\n"
     endIter <- liftIO $ G.textBufferGetEndIter mainbuf
     liftIO $ G.textBufferMoveMarkByName mainbuf "prompt" endIter
+
+    scrollToEnd
+
   where
     appendChunk :: (String, Attr) -> Screen ()
     appendChunk (s, a) = do
@@ -199,6 +202,21 @@ appendToMainBuffer astr = do
                       endIter' <- G.textBufferGetIterAtOffset mainbuf endOffset
                       G.textBufferApplyTagByName mainbuf (tagNameForAttr a) startIter' endIter'
                       return ()
+
+scrollToEnd :: Screen ()
+scrollToEnd = do
+    ctrls <- askControls
+    let mainbuf = ctlMainBuffer ctrls
+
+    endIter <- liftIO $ G.textBufferGetEndIter mainbuf
+    endMark <- do
+        m <- liftIO $ G.textBufferGetMark mainbuf "end"
+        case m of
+            Nothing -> liftIO $ G.textBufferCreateMark mainbuf (Just "end") endIter True
+            Just mark -> do
+                liftIO $ G.textBufferMoveMark mainbuf mark endIter
+                return mark
+    liftIO $ G.textViewScrollMarkOnscreen (ctlMainView ctrls) endMark
 
 updatePrompt :: Screen ()
 updatePrompt = do
@@ -220,6 +238,8 @@ updatePrompt = do
 
     endIter <- liftIO $ G.textBufferGetEndIter mainbuf
     liftIO $ G.textBufferInsert mainbuf endIter $ markedPrompt ++ prompt
+
+    scrollToEnd
 
 execUIAction :: UIAction -> Screen ()
 execUIAction action = case action of
