@@ -8,16 +8,20 @@ module Mudblood.Trigger
     -- * Convenient type aliases
     , MBTrigger, MBTriggerFlow
     -- * Trigger functions
-    , guard, guardLineEvent, guardSendEvent
+    -- ** Guards
+    , guardT, guardLine, guardSend
     -- ** Yielding
     , yieldLine, yieldSend
     -- ** Waiting
     , waitForLine, waitForSend
     -- ** Returning
     , returnLine, returnSend
+    -- ** Kleisli arrow
+    , (>=>)
     ) where
 
 import Control.Trigger
+import Control.Monad
 
 import Data.Dynamic
 
@@ -56,17 +60,18 @@ data TriggerEvent = LineTEvent AttrString   -- ^ Emitted when a line was receive
     deriving (Eq)
 
 -- | Fail if the condition is False.
-guard :: (Functor f) => Bool -> Trigger f i y ()
-guard b = if b then return () else failT
+guardT :: (Functor f) => Bool -> Trigger f i y ()
+guardT True  = return ()
+guardT False = failT
 
-guardLineEvent :: (Functor f) => TriggerEvent -> Trigger f i y [AttrString]
-guardLineEvent ev = case ev of
-    LineTEvent s -> return [s]
+guardLine :: (Functor f) => TriggerEvent -> Trigger f i y AttrString
+guardLine ev = case ev of
+    LineTEvent s -> return s
     _            -> failT
 
-guardSendEvent :: (Functor f) => TriggerEvent -> Trigger f i y [String]
-guardSendEvent ev = case ev of
-    SendTEvent s -> return [s]
+guardSend :: (Functor f) => TriggerEvent -> Trigger f i y String
+guardSend ev = case ev of
+    SendTEvent s -> return s
     _            -> failT
 
 -- | Yield a line event

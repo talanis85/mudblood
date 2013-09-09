@@ -40,7 +40,7 @@ defenseMap = [ ("verfehlt Dich",                                    0,   0,   ""
              ]
 
 fightColorizer :: MBTriggerFlow
-fightColorizer = Permanent $ guardLineEvent >>> \x ->
+fightColorizer = Permanent $ guardLine >=> \x ->
     let attackResult = foldMap (check "^  Du " x) attackMap
         defenseResult = foldMap (check "^  .+ " x) defenseMap
     in case getFirst attackResult of

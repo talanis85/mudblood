@@ -31,6 +31,6 @@ walker f path = Volatile $ walker' f path
                                   walker' f rest ev'
 
 moveTrigger :: MBTriggerFlow
-moveTrigger = Permanent $ guardSendEvent >>> \l -> do
+moveTrigger = Permanent $ guardSend >=> \l -> do
                 modifyMap $ mapStep l
                 returnSend l

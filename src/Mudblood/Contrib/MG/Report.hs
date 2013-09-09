@@ -10,7 +10,7 @@ import Mudblood.Contrib.MG.State
 import Mudblood.Contrib.MG.Gilden
 
 tanjianreportTrigger :: MBTriggerFlow
-tanjianreportTrigger = Permanent $ guardLineEvent >>> \x ->
+tanjianreportTrigger = Permanent $ guardLine >=> \x ->
     case x =~ "^\\$REPORT\\$ (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) '(.+)' ([JN])([JN])([JN])([JN]) (\\w+) ([ -+]) (\\w+) (\\w+) (\\w+) ([JjN]) (\\d+)" :: [[String]] of
         r:rs -> do
             setU (mgStats . mgStatLP)   (read $ r !! 1)
@@ -50,7 +50,7 @@ tanjianreportTrigger = Permanent $ guardLineEvent >>> \x ->
 ------------------------------------------------------------------------------
 
 zaubererreportTrigger :: MBTriggerFlow
-zaubererreportTrigger = Permanent $ guardLineEvent >>> \x ->
+zaubererreportTrigger = Permanent $ guardLine >=> \x ->
     case x =~ "^\\$REPORT\\$ (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) '(.+)' ([JN])([JN])([JN])([JN]) ([FES ]) ([W ]) ([X ]) ([sSVZ ]) ([B ]) ([E ]) (\\w+)" :: [[String]] of
         r:rs -> do
             setU (mgStats . mgStatLP)   (read $ r !! 1)

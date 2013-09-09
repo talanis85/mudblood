@@ -5,14 +5,13 @@ module Mudblood.Contrib.MG.Colors
 import Mudblood
 import Text.Regex.PCRE
 
-colorRegex col pat = Permanent $ guardLineEvent >>> \s ->
-    if s =~ pat :: Bool then returnLine $ setFg col s
-                        else failT
-
+colorRegex col pat = Permanent $ guardLine >=> \s -> do
+    guardT (s =~ pat :: Bool)
+    returnLine $ setFg col s
 
 colorMultilineCommunication :: Color -> String -> MBTriggerFlow
-colorMultilineCommunication color regex = Permanent $ guardLineEvent >>> \l -> do
-    guard $ l =~ regex
+colorMultilineCommunication color regex = Permanent $ guardLine >=> \l -> do
+    guardT $ l =~ regex
     l' <- yieldLine (setFg color l) >>= waitForLine
     follow l'
   where
