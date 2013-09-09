@@ -108,7 +108,7 @@ class (Monad m) => MBMonad m where
 data MBState = MBState {
     mbLinebuffer :: [AttrString],
     mbLog :: [String],
-    mbTrigger :: Maybe (TriggerFlow TriggerEvent),
+    mbTrigger :: Maybe MBTriggerFlow,
     mbUserData :: Dynamic,
     mbMap :: Map,
     mbWidgets :: [UIWidget]
@@ -116,7 +116,7 @@ data MBState = MBState {
 
 -- | Create a new MBState.
 mkMBState :: (Typeable a) =>
-             Maybe (TriggerFlow TriggerEvent)   -- ^ Triggers
+             Maybe MBTriggerFlow                -- ^ Triggers
           -> a                                  -- ^ User data
           -> MBState
 
@@ -187,8 +187,8 @@ type MBCommand = Command MB
 
 --------------------------------------------------------------------------------------------------
 
-type MBTrigger a = Trigger TriggerEvent [TriggerEvent] a
-type MBTriggerFlow = TriggerFlow TriggerEvent
+type MBTrigger a = Trigger (MBTriggerF TriggerEvent) TriggerEvent [TriggerEvent] a
+type MBTriggerFlow = TriggerFlow (MBTriggerF TriggerEvent) TriggerEvent
 
 data TriggerEvent = LineTEvent AttrString   -- ^ Emitted when a line was received from the host
                   | SendTEvent String       -- ^ Emitted when the user wants to send a line of input
@@ -314,31 +314,50 @@ instance MBMonad MB where
 
 --------------------------------------------------------------------------------------------------
 
-instance MBMonad (Trigger i y) where
-    send s = liftF $ Send (Communication s) ()
-    echo s = liftF $ Echo s ()
-    ui action = liftF $ PutUI action ()
-    io action = liftF $ RunIO action id
+data MBTriggerF i o = forall a. RunIO (IO a) (a -> o)
+                    | Echo String o
+                    | Send Communication o
+                    | GetUserData (Dynamic -> o)
+                    | PutUserData Dynamic o
+                    | GetMap (Map -> o)
+                    | PutMap Map o
+                    | PutUI UIAction o
 
-    getUserDataDynamic = liftF $ GetUserData id
-    putUserDataDynamic d = liftF $ PutUserData d ()
+instance Functor (MBTriggerF i) where
+    fmap f (RunIO io g) = RunIO io $ f . g
+    fmap f (Echo s x) = Echo s $ f x
+    fmap f (Send s x) = Send s $ f x
+    fmap f (GetUserData g) = GetUserData $ f . g
+    fmap f (PutUserData d x) = PutUserData d $ f x
+    fmap f (PutUI a x) = PutUI a $ f x
+    fmap f (GetMap g) = GetMap $ f . g
+    fmap f (PutMap d x) = PutMap d $ f x
 
-    getMap = liftF $ GetMap id
-    putMap d = liftF $ PutMap d ()
+instance MBMonad (Trigger (MBTriggerF i) i y) where
+    send s = liftF $ Action $ Send (Communication s) ()
+    echo s = liftF $ Action $ Echo s ()
+    ui action = liftF $ Action $ PutUI action ()
+    io action = liftF $ Action $ RunIO action id
+
+    getUserDataDynamic = liftF $ Action $ GetUserData id
+    putUserDataDynamic d = liftF $ Action $ PutUserData d ()
+
+    getMap = liftF $ Action $ GetMap id
+    putMap d = liftF $ Action $ PutMap d ()
 
 -- | Interpreter for the Trigger Monad
-runTriggerMB :: Trigger i o o -> MB (TriggerResult i o o)
+runTriggerMB :: Trigger (MBTriggerF i) i o o -> MB (TriggerResult (MBTriggerF i) i o o)
 runTriggerMB (Pure r) = return $ TResult r
 runTriggerMB (Free (Yield y f)) = return $ TYield y f
 runTriggerMB (Free (Fail)) = return $ TFail
-runTriggerMB (Free (Echo s x)) = echo s >> runTriggerMB x
-runTriggerMB (Free (Send s x)) = dispatchSend s >> runTriggerMB x
-runTriggerMB (Free (GetUserData g)) = getUserDataDynamic >>= runTriggerMB . g
-runTriggerMB (Free (PutUserData d x)) = putUserDataDynamic d >> runTriggerMB x
-runTriggerMB (Free (PutUI a x)) = ui a >> runTriggerMB x
-runTriggerMB (Free (RunIO action f)) = io action >>= runTriggerMB . f
-runTriggerMB (Free (GetMap g)) = getMap >>= runTriggerMB . g
-runTriggerMB (Free (PutMap d x)) = putMap d >> runTriggerMB x
+runTriggerMB (Free (Action (Echo s x))) = echo s >> runTriggerMB x
+runTriggerMB (Free (Action (Send s x))) = dispatchSend s >> runTriggerMB x
+runTriggerMB (Free (Action (GetUserData g))) = getUserDataDynamic >>= runTriggerMB . g
+runTriggerMB (Free (Action (PutUserData d x))) = putUserDataDynamic d >> runTriggerMB x
+runTriggerMB (Free (Action (PutUI a x))) = ui a >> runTriggerMB x
+runTriggerMB (Free (Action (RunIO action f))) = io action >>= runTriggerMB . f
+runTriggerMB (Free (Action (GetMap g))) = getMap >>= runTriggerMB . g
+runTriggerMB (Free (Action (PutMap d x))) = putMap d >> runTriggerMB x
 
 --------------------------------------------------------------------------------------------------
 

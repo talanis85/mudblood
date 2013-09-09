@@ -3,7 +3,7 @@
 module Mudblood.Trigger
     ( Trigger
     , (>>>), (|||)
-    , TriggerF (Result, Yield, Fail, RunIO, Echo, Send, GetUserData, PutUserData, PutUI, GetMap, PutMap)
+    , TriggerF (Result, Yield, Fail, Action)
     , TriggerResult (TResult, TYield, TFail)
     , TriggerFlow (Permanent, Volatile, (:||:), (:>>:))
     , runTriggerFlow
@@ -19,31 +19,28 @@ import Data.Monoid
 import Data.Dynamic (Dynamic)
 import Data.Typeable
 
-import Mudblood.UI
-import Mudblood.Mapper.Map
-import Mudblood.Telnet
-
 -- A TriggerFlow is a flow chart of triggers. Triggers can either be Permanent or
 -- Volatile. They can be combined in sequence or parallel.
 
-data TriggerFlow t = Permanent (t -> Trigger t [t] [t])
-                   | Volatile (t -> Trigger t [t] [t])
-                   | TriggerFlow t :||: TriggerFlow t
-                   | TriggerFlow t :>>: TriggerFlow t
+data TriggerFlow f t = Permanent (t -> Trigger f t [t] [t])
+                     | Volatile (t -> Trigger f t [t] [t])
+                     | TriggerFlow f t :||: TriggerFlow f t
+                     | TriggerFlow f t :>>: TriggerFlow f t
 
 infixr 9 :||:
 infixr 9 :>>:
 
-instance Show (TriggerFlow t) where
+instance Show (TriggerFlow f t) where
     show (Permanent t) = "Permanent"
     show (Volatile t) = "Volatile"
     show (a :>>: b) = (show a) ++ " :>>: " ++ (show b)
     show (a :||: b) = (show a) ++ " :||: " ++ (show b)
 
-runTriggerFlow :: (Monad m) => (Trigger t [t] [t] -> m (TriggerResult t [t] [t]))
-                            -> TriggerFlow t
+runTriggerFlow :: (Monad m, Functor f)
+                            => (Trigger f t [t] [t] -> m (TriggerResult f t [t] [t]))
+                            -> TriggerFlow f t
                             -> t
-                            -> m ([t], Maybe (TriggerFlow t))
+                            -> m ([t], Maybe (TriggerFlow f t))
 
 runTriggerFlow f (Permanent t) arg = do
     res <- f (t arg)
@@ -93,40 +90,26 @@ runTriggerFlow f (f1 :>>: f2) arg = do
         return (r:rest, trest)
 
 
-data TriggerResult i y o = TResult o
-                         | TYield y (i -> Trigger i y o)
-                         | TFail
+data TriggerResult f i y o = TResult o
+                           | TYield y (i -> Trigger f i y o)
+                           | TFail
 
 -- Trigger functor
 
-data TriggerF i y o = Result o
-                    | Yield y (i -> o)
-                    | Fail
-                    | forall a. RunIO (IO a) (a -> o)
-                    | Echo String o
-                    | Send Communication o
-                    | GetUserData (Dynamic -> o)
-                    | PutUserData Dynamic o
-                    | GetMap (Map -> o)
-                    | PutMap Map o
-                    | PutUI UIAction o
+data TriggerF f i y o = Result o
+                      | Yield y (i -> o)
+                      | Fail
+                      | Action (f o)
 
-instance Functor (TriggerF i y) where
+instance (Functor f) => Functor (TriggerF f i y) where
     fmap f (Result o) = Result $ f o
     fmap f (Yield o g) = Yield o $ f . g
     fmap f Fail = Fail
-    fmap f (RunIO io g) = RunIO io $ f . g
-    fmap f (Echo s x) = Echo s $ f x
-    fmap f (Send s x) = Send s $ f x
-    fmap f (GetUserData g) = GetUserData $ f . g
-    fmap f (PutUserData d x) = PutUserData d $ f x
-    fmap f (PutUI a x) = PutUI a $ f x
-    fmap f (GetMap g) = GetMap $ f . g
-    fmap f (PutMap d x) = PutMap d $ f x
+    fmap f (Action a) = Action (fmap f a)
 
 -- Free monad of trigger functor
 
-type Trigger i y = Free (TriggerF i y)
+type Trigger f i y = Free (TriggerF f i y)
 
 (>>>) :: (Monad m) => (a -> m [b]) -> (b -> m [c]) -> (a -> m [c])
 a >>> b = a >=> mapM b >=> return . concat
@@ -139,8 +122,8 @@ a ||| b = \x -> do
 
 -- Trigger primitives
 
-failT :: Trigger i y o
+failT :: (Functor f) => Trigger f i y o
 failT = liftF $ Fail
 
-yield :: y -> Trigger i y i
+yield :: (Functor f) => y -> Trigger f i y i
 yield x = liftF $ Yield x id

@@ -14,35 +14,35 @@ import Mudblood.Core
 import Mudblood.Text
 
 -- | Fail if the condition is False.
-guard :: Bool -> Trigger i y ()
+guard :: (Functor f) => Bool -> Trigger f i y ()
 guard b = if b then return () else failT
 
-guardLineEvent :: TriggerEvent -> Trigger i y [AttrString]
+guardLineEvent :: (Functor f) => TriggerEvent -> Trigger f i y [AttrString]
 guardLineEvent ev = case ev of
     LineTEvent s -> return [s]
     _            -> failT
 
-guardSendEvent :: TriggerEvent -> Trigger i y [String]
+guardSendEvent :: (Functor f) => TriggerEvent -> Trigger f i y [String]
 guardSendEvent ev = case ev of
     SendTEvent s -> return [s]
     _            -> failT
 
 -- | Yield a line event
-yieldLine :: AttrString -> Trigger i [TriggerEvent] i
+yieldLine :: (Functor f) => AttrString -> Trigger f i [TriggerEvent] i
 yieldLine x = yield [LineTEvent x]
 
 -- | Yield a send event
-yieldSend :: String -> Trigger i [TriggerEvent] i
+yieldSend :: (Functor f) => String -> Trigger f i [TriggerEvent] i
 yieldSend x = yield [SendTEvent x]
 
 -- | Wait for a line event
-waitForLine :: TriggerEvent -> Trigger i y AttrString
+waitForLine :: (Functor f) => TriggerEvent -> Trigger f i y AttrString
 waitForLine ev = case ev of
     LineTEvent s -> return s
     _            -> failT
 
 -- | Wait for a send event
-waitForSend :: TriggerEvent -> Trigger i y String
+waitForSend :: (Functor f) => TriggerEvent -> Trigger f i y String
 waitForSend ev = case ev of
     SendTEvent s -> return s
     _            -> failT
