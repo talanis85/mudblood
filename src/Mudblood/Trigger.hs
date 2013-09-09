@@ -21,6 +21,7 @@ import Data.Typeable
 
 import Mudblood.UI
 import Mudblood.Mapper.Map
+import Mudblood.Telnet
 
 -- A TriggerFlow is a flow chart of triggers. Triggers can either be Permanent or
 -- Volatile. They can be combined in sequence or parallel.
@@ -103,7 +104,7 @@ data TriggerF i y o = Result o
                     | Fail
                     | forall a. RunIO (IO a) (a -> o)
                     | Echo String o
-                    | Send String o
+                    | Send Communication o
                     | GetUserData (Dynamic -> o)
                     | PutUserData Dynamic o
                     | GetMap (Map -> o)

@@ -151,7 +151,7 @@ telnetReceive ev = do
     updateWidgets
 
 -- | Send a byte array to the socket (if existent)
-sendSocket :: [Word8] -> Screen ()
+sendSocket :: Communication -> Screen ()
 sendSocket dat =
     do
     state <- get
@@ -458,7 +458,7 @@ handleTelneg :: TelnetNeg -> Screen ()
 handleTelneg neg = case neg of
     -- WILL EOR
     TelnetNeg (Just CMD_WILL) (Just OPT_EOR) [] ->
-        sendSocket $ toBinary $ TelnetNeg (Just CMD_DO) (Just OPT_EOR) []        
+        mb $ send $ TelnetNeg (Just CMD_DO) (Just OPT_EOR) []        
     -- EOR
     TelnetNeg (Just CMD_EOR) Nothing [] -> do
         modify $ \st -> st { scrPrompt = "", scrMarkedPrompt = scrPrompt st }

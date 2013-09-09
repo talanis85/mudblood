@@ -1,10 +1,10 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, TypeSynonymInstances, FlexibleInstances, ExistentialQuantification #-}
 
 module Mudblood.Telnet
     ( TelnetSocket
     , TelnetIO
     , TelnetEvent (TelnetRawEvent, TelnetNegEvent, TelnetCloseEvent)
-    , TelnetSendable (toBinary)
+    , Communication (..), Sendable
     -- * Telnet socket primitives
     , telnetSend
     , telnetConnect
@@ -265,23 +265,28 @@ telnetRecv =
   where get' = TelnetIO get
         put' s = TelnetIO $ put s
 
-class TelnetSendable a where
+data Communication = forall a. Sendable a => Communication a
+
+class Sendable a where
     toBinary :: a -> [Word8]
 
-instance TelnetSendable [Word8] where
+instance Sendable Communication where
+    toBinary (Communication c) = toBinary c
+
+instance Sendable [Word8] where
     toBinary = id
 
-instance TelnetSendable String where
-    toBinary str = UTF8.encode str
+instance Sendable String where
+    toBinary str = UTF8.encode $ str ++ "\n"
 
-instance TelnetSendable TelnetNeg where
+instance Sendable TelnetNeg where
     toBinary neg = telnetNegToBytes neg
 
-instance TelnetSendable GMCP where
+instance Sendable GMCP where
     toBinary gmcp = toBinary $ telnetSubneg OPT_GMCP $ UTF8.encode $ dumpGMCP gmcp
 
-telnetSend :: TelnetSocket -> [Word8] -> IO ()
-telnetSend sock dat = send sock (B.pack dat) >> return ()
+telnetSend :: TelnetSocket -> Communication -> IO ()
+telnetSend sock (Communication dat) = send sock (B.pack (toBinary dat)) >> return ()
 
 telnetClose :: TelnetSocket -> IO ()
 telnetClose sock = sClose sock

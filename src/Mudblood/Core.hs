@@ -12,7 +12,7 @@ module Mudblood.Core
     , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI)
     -- * MB primitives
     , command, commands, quit, logger, process, processSend, processTelnet, mbError
-    , connect, sendBinary, modifyTriggers
+    , connect, modifyTriggers
     , initGMCP
     , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap)
     -- * Events
@@ -68,7 +68,7 @@ class (Monad m) => MBMonad m where
     echo :: String -> m ()
     echo = echoA . toAttrString
 
-    send :: String -> m ()
+    send :: (Sendable a) => a -> m ()
 
     ui :: UIAction -> m ()
 
@@ -141,7 +141,7 @@ mkMBConfig = MBConfig
 
 data MBF o = forall a. MBFIO (IO a) (a -> o)
            | MBFLine AttrString o
-           | MBFSend [Word8] o
+           | MBFSend Communication o
            | MBFConnect String String o
            | MBFQuit o
            | MBFUI UIAction o
@@ -169,7 +169,7 @@ dispatchIO action = liftF $ MBFIO action id
 dispatchLine :: AttrString -> MB ()
 dispatchLine x = liftF $ MBFLine x ()
 
-dispatchSend :: [Word8] -> MB ()
+dispatchSend :: Communication -> MB ()
 dispatchSend x = liftF $ MBFSend x ()
 
 dispatchConnect :: String -> String -> MB ()
@@ -245,12 +245,12 @@ processSend str = do
 
 initGMCP :: MB ()
 initGMCP = do
-    sendBinary $ toBinary $ TelnetNeg (Just CMD_DO) (Just OPT_GMCP) []        
-    sendBinary $ toBinary $ GMCP "Core.Hello" $
+    send $ TelnetNeg (Just CMD_DO) (Just OPT_GMCP) []        
+    send $ GMCP "Core.Hello" $
         JSObject $ toJSObject [ ("client", JSString $ toJSString "mudblood"),
                                 ("version", JSString $ toJSString "0.1")
                               ]
-    sendBinary $ toBinary $ GMCP "Core.Supports.Set" $
+    send $ GMCP "Core.Supports.Set" $
         JSArray $ [ JSString $ toJSString "MG.char 1"
                   , JSString $ toJSString "comm.channel 1"
                   , JSString $ toJSString "MG.room 1"
@@ -293,16 +293,12 @@ mbError str = echo $ "Error: " ++ str
 connect :: String -> String -> MB ()
 connect = dispatchConnect
 
--- | Send binary data to the socket.
-sendBinary :: [Word8] -> MB ()
-sendBinary = dispatchSend
-
 -- | Modify the global TriggerFlow
 modifyTriggers :: (Maybe MBTriggerFlow -> Maybe MBTriggerFlow) -> MB ()
 modifyTriggers f = modify $ \s -> s { mbTrigger = f (mbTrigger s) }
 
 instance MBMonad MB where
-    send str = sendBinary $ UTF8.encode $ str ++ "\n"
+    send = dispatchSend . Communication
     echoA = dispatchLine
     ui = dispatchUI
     io = dispatchIO
@@ -319,7 +315,7 @@ instance MBMonad MB where
 --------------------------------------------------------------------------------------------------
 
 instance MBMonad (Trigger i y) where
-    send s = liftF $ Send s ()
+    send s = liftF $ Send (Communication s) ()
     echo s = liftF $ Echo s ()
     ui action = liftF $ PutUI action ()
     io action = liftF $ RunIO action id
@@ -336,7 +332,7 @@ runTriggerMB (Pure r) = return $ TResult r
 runTriggerMB (Free (Yield y f)) = return $ TYield y f
 runTriggerMB (Free (Fail)) = return $ TFail
 runTriggerMB (Free (Echo s x)) = echo s >> runTriggerMB x
-runTriggerMB (Free (Send s x)) = send (s ++ "\n") >> runTriggerMB x
+runTriggerMB (Free (Send s x)) = dispatchSend s >> runTriggerMB x
 runTriggerMB (Free (GetUserData g)) = getUserDataDynamic >>= runTriggerMB . g
 runTriggerMB (Free (PutUserData d x)) = putUserDataDynamic d >> runTriggerMB x
 runTriggerMB (Free (PutUI a x)) = ui a >> runTriggerMB x
