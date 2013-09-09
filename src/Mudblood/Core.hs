@@ -59,7 +59,6 @@ data LogSeverity = LogDebug
 -- | Type class that contains common functions of triggers and MB actions.
 class (Monad m) => MBMonad m where
     echoA :: AttrString -> m ()
-    echoA = echo . fromAttrString
 
     echo :: String -> m ()
     echo = echoA . toAttrString
@@ -301,7 +300,7 @@ instance MBMonad MB where
 
 instance MBMonad (Trigger (MBTriggerF i) i y) where
     send s = liftF $ Action $ Send (Communication s) ()
-    echo s = liftF $ Action $ Echo s ()
+    echoA s = liftF $ Action $ Echo s ()
     ui action = liftF $ Action $ PutUI action ()
     io action = liftF $ Action $ RunIO action id
 
@@ -316,7 +315,7 @@ runTriggerMB :: Trigger (MBTriggerF i) i o o -> MB (TriggerResult (MBTriggerF i)
 runTriggerMB (Pure r) = return $ TResult r
 runTriggerMB (Free (Yield y f)) = return $ TYield y f
 runTriggerMB (Free (Fail)) = return $ TFail
-runTriggerMB (Free (Action (Echo s x))) = echo s >> runTriggerMB x
+runTriggerMB (Free (Action (Echo s x))) = echoA s >> runTriggerMB x
 runTriggerMB (Free (Action (Send s x))) = dispatchSend s >> runTriggerMB x
 runTriggerMB (Free (Action (GetUserData g))) = getUserDataDynamic >>= runTriggerMB . g
 runTriggerMB (Free (Action (PutUserData d x))) = putUserDataDynamic d >> runTriggerMB x

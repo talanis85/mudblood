@@ -32,7 +32,7 @@ import Mudblood.Mapper.Map
 import Data.GMCP
 
 data MBTriggerF i o = forall a. RunIO (IO a) (a -> o)
-                    | Echo String o
+                    | Echo AttrString o
                     | Send Communication o
                     | GetUserData (Dynamic -> o)
                     | PutUserData Dynamic o
