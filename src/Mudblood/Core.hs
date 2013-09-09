@@ -29,6 +29,7 @@ import Data.Word
 import Data.List.Split
 import Data.Dynamic
 
+import Control.Applicative
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Trans
@@ -157,7 +158,7 @@ instance Functor MBF where
 --------------------------------------------------------------------------------------------------
 
 newtype MB a = MB (ReaderT MBConfig (StateT MBState (Free MBF)) a)
-    deriving (Monad, MonadState MBState, MonadReader MBConfig, MonadFree MBF)
+    deriving (Monad, MonadState MBState, MonadReader MBConfig, MonadFree MBF, Functor, Applicative)
 
 -- | Run the MB monad.
 runMB :: MBConfig -> MBState -> MB a -> Free MBF (a, MBState)

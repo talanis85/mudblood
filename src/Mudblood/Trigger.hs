@@ -11,9 +11,8 @@ module Mudblood.Trigger
     , failT, yield, --echo, send, getUserData, putUserData, putUIString, runIO
     ) where
 
-import Prelude hiding (fail)
-
-import Control.Monad hiding (fail)
+import Control.Applicative
+import Control.Monad
 import Control.Monad.Free
 import Data.Monoid
 import Data.Dynamic (Dynamic)
@@ -36,25 +35,23 @@ instance Show (TriggerFlow f t) where
     show (a :>>: b) = (show a) ++ " :>>: " ++ (show b)
     show (a :||: b) = (show a) ++ " :||: " ++ (show b)
 
-runTriggerFlow :: (Monad m, Functor f)
+runTriggerFlow :: (Applicative m, Monad m, Functor f)
                             => (Trigger f t [t] [t] -> m (TriggerResult f t [t] [t]))
                             -> TriggerFlow f t
                             -> t
                             -> m ([t], Maybe (TriggerFlow f t))
 
-runTriggerFlow f (Permanent t) arg = do
-    res <- f (t arg)
-    case res of
-        TResult v -> return (v, Just (Permanent t))
-        TYield v g -> return (v, Just (Volatile g :>>: Permanent t))
-        TFail -> return ([arg], Just (Permanent t))
+runTriggerFlow f (Permanent t) arg = run <$> f (t arg)
+    where run res = case res of
+            TResult v -> (v, Just (Permanent t))
+            TYield v g -> (v, Just (Volatile g :>>: Permanent t))
+            TFail -> ([arg], Just (Permanent t))
 
-runTriggerFlow f (Volatile t) arg = do
-    res <- f (t arg)
-    case res of
-        TResult v -> return (v, Nothing)
-        TYield v g -> return (v, Just (Volatile g))
-        TFail -> return ([arg], Just (Volatile t))
+runTriggerFlow f (Volatile t) arg = run <$> f (t arg)
+    where run res = case res of
+            TResult v -> (v, Nothing)
+            TYield v g -> (v, Just (Volatile g))
+            TFail -> ([arg], Just (Volatile t))
 
 runTriggerFlow f (f1 :||: f2) arg = do
     (res1, t1) <- runTriggerFlow f f1 arg
@@ -114,11 +111,8 @@ type Trigger f i y = Free (TriggerF f i y)
 (>>>) :: (Monad m) => (a -> m [b]) -> (b -> m [c]) -> (a -> m [c])
 a >>> b = a >=> mapM b >=> return . concat
 
-(|||) :: (Monad m) => (a -> m [b]) -> (a -> m [b]) -> (a -> m [b])
-a ||| b = \x -> do
-    r1 <- a x
-    r2 <- b x
-    return $ r1 ++ r2
+(|||) :: (Applicative f) => (a -> f [b]) -> (a -> f [b]) -> (a -> f [b])
+a ||| b = \x -> (++) <$> a x <*> b x
 
 -- Trigger primitives
 
