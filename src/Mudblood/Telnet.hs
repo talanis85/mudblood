@@ -179,7 +179,10 @@ tnFeed state xs = runWriter $ parse state { tnRemaining = ((tnRemaining state) +
                              in case telnegParse (tnTelnegState state) x of
                                      (tnstate, TelnegNone) ->
                                         parse $ newstate {
-                                           tnParsed = ((tnParsed newstate) ++ [x]),
+                                           tnParsed = case x of
+                                                8    -> take (max 0 (length (tnParsed newstate) - 1)) (tnParsed newstate)
+                                                _    -> (tnParsed newstate) ++ [x]
+                                                ,
                                            tnTelnegState = tnstate
                                         }
                                      (tnstate, TelnegPartial) ->
