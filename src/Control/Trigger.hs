@@ -7,6 +7,8 @@ module Control.Trigger
     , runTriggerFlow
     , Free (Pure, Free)
     , failT, yield
+    -- * Combinators
+    , whileT
     ) where
 
 import Control.Applicative
@@ -113,3 +115,36 @@ failT = liftF $ Fail
 
 yield :: (Functor f) => y -> Trigger f i y i
 yield x = liftF $ Yield x id
+
+-- | Run a trigger as long as a condition is true.
+whileT :: (Functor f) => (i -> Trigger f i y o) -- ^ Guard trigger to execute before
+                      -> (o -> Bool)            -- ^ The condition
+                      -> (o -> Trigger f i y y) -- ^ Trigger to run while condition = True
+                      -> (o -> Trigger f i y y) -- ^ Trigger to run when condition = False
+                      -> (i -> Trigger f i y y)
+whileT guard condition combi end x = do
+    x' <- guard x
+    if condition x'
+        then combi x' >>= yield >>= whileT guard condition combi end
+        else end x' >>= return
+
+{-
+    multiple :: (Functor f)
+         => String
+         -> (AttrString -> MBTrigger [TriggerEvent])
+         -> String
+         -> (AttrString -> MBTrigger [TriggerEvent])
+         -> (i -> Trigger f i y o)
+triggerRegexMultiline start startt next nextt = guardLine >=> \l -> do
+    guardT $ l =~ start
+    l' <- startt l >>= yield >>= waitForLine
+    follow l'
+  where
+    follow l = do
+        if l =~ "^ " then do
+                          l' <- nextt l >>= yield >>= waitForLine
+                          follow l'
+                     else returnLine l
+
+whileT :: (Functor f) => -> (i -> Trigger f i y o)
+-}
