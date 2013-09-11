@@ -62,6 +62,8 @@ data ScreenState = ScreenState {
     scrCommandBuffer :: String,
     scrNormalKeybuffer :: [Key],
 
+    scrWidgets :: [UIWidget MB],
+
     scrBindings :: Trie.Trie Key (Screen ()),
 
     scrMBState :: MBState,
@@ -75,6 +77,22 @@ data ScreenState = ScreenState {
     
     scrQuit :: Bool
     }
+
+mkScreenState conf initMBState = ScreenState {
+    scrPrompt = "",
+    scrMarkedPrompt = "",
+    scrNormalBuffer = "",
+    scrCommandBuffer = "",
+    scrNormalKeybuffer = [],
+    scrBindings = Trie.empty,
+    --scrMode = NormalMode,
+    scrMBConfig = conf,
+    scrMBState = initMBState,
+    scrSocket = Nothing,
+    scrQuit = False,
+    scrTime = 0,
+    scrWidgets = []
+}
 
 data ScreenControls = ScreenControls
     { ctlMainView       :: G.TextView
@@ -247,13 +265,14 @@ updatePrompt = do
 
     scrollToEnd
 
-execUIAction :: UIAction -> Screen ()
+execUIAction :: UIAction MB -> Screen ()
 execUIAction action = case action of
     UIStatus str -> askControls >>= (\l -> liftIO $ G.labelSetText l str) . ctlStatusUser
     UIUpdateMap map -> do
         ctls <- askControls
         liftIO $ G.labelSetText (ctlStatusSystem ctls) $
             printf "Room: %d" (mapCurrentId map)
+    UIUpdateWidgets w -> modify $ \s -> s { scrWidgets = w }
 
 ------------------------------------------------------------------------------
 
@@ -404,7 +423,7 @@ execScreen :: MBConfig -> MBState -> Screen () -> IO ()
 execScreen conf initMBState action =
     do
     G.initGUI
-    stref <- newIORef $ initState conf initMBState
+    stref <- newIORef $ mkScreenState conf initMBState
     --gladepath <- getDataFileName "gui.glade"
     --ctrls <- initUI gladepath stref
     ctrls <- initUI "gui.glade" stref
@@ -414,21 +433,6 @@ execScreen conf initMBState action =
     case scrSocket st of
         Just sock -> telnetClose sock
         Nothing -> return ()
-  where
-    initState conf initMBState = ScreenState {
-        scrPrompt = "",
-        scrMarkedPrompt = "",
-        scrNormalBuffer = "",
-        scrCommandBuffer = "",
-        scrNormalKeybuffer = [],
-        scrBindings = Trie.empty,
-        --scrMode = NormalMode,
-        scrMBConfig = conf,
-        scrMBState = initMBState,
-        scrSocket = Nothing,
-        scrQuit = False,
-        scrTime = 0
-    }
 
 ------------------------------------------------------------------------------
 
@@ -523,7 +527,7 @@ updateWidgets = do
 
 drawWidgets :: G.DrawWindow -> Screen ()
 drawWidgets win = do
-    widgets <- mb getWidgets
+    widgets <- gets scrWidgets
     ctls <- askControls
     style <- liftIO $ G.rcGetStyle (ctlWidgetArea ctls)
 

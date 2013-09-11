@@ -1,6 +1,8 @@
 module Mudblood.UI
     ( UIValue (UIStringValue, UIIntValue, UINilValue)
-    , UIAction (UIStatus, UISetValue, UIUpdateMap)
+    , UIAction (UIStatus, UISetValue, UIUpdateMap, UIUpdateWidgets)
+    -- * Widgets
+    , UIWidget (..)
     ) where
 
 import Mudblood.Mapper.Map
@@ -14,6 +16,11 @@ instance Show UIValue where
     show (UIIntValue i) = show i
     show UINilValue = "NIL"
 
-data UIAction = UIStatus String
-              | UIUpdateMap Map
-              | UISetValue String UIValue
+data UIAction m = UIStatus String
+                | UIUpdateMap Map
+                | UISetValue String UIValue
+                | UIUpdateWidgets [UIWidget m]
+
+-- | Widgets are small pieces of information to be displayed by the screen.
+data UIWidget m = UIWidgetText (m String)        -- ^ A singe line of text
+                | UIWidgetTable (m [[String]])   -- ^ A table of textual cells

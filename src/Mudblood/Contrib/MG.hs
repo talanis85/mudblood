@@ -35,10 +35,12 @@ module Mudblood.Contrib.MG
     -- ** Zauberer
     ) where
 
+import Control.Monad
 import Control.Lens
 import Data.Typeable
 import Data.Foldable
 import Data.Monoid
+import Data.Char
 import Text.Regex.PCRE
 
 import Data.GMCP
@@ -107,6 +109,7 @@ mkMGZaubererStats = MGZaubererStats
 makeLenses ''MGZaubererStats
 
 data MGGuild = MGGuildTanjian | MGGuildZauberer | MGGuildAbenteurer
+    deriving (Eq)
 
 data MGState = MGState
     { _mgChar          :: MGChar
@@ -224,19 +227,19 @@ setFocus arg = case arg of
     "" -> setU mgFocus Nothing
     f  -> setU mgFocus (Just "hallo")
 
-setGuild :: String -> MB ()
+setGuild :: (MBMonad m) => String -> m ()
 setGuild arg = case readGuild arg of
-    Nothing -> mbError $ "Unbekannte Gilde: " ++ arg
+    Nothing -> echoErr $ "Unbekannte Gilde: " ++ arg
     Just g  -> do
                setU mgGuild g
                updateWidgetList
 
 ------------------------------------------------------------------------------
 
-updateWidgetList :: MB ()
+updateWidgetList :: (MBMonad m) => m ()
 updateWidgetList = do
     guild <- getU mgGuild
-    modifyWidgets $ \_ ->
+    ui $ UIUpdateWidgets $
         [ UIWidgetText $ return "--- MorgenGrauen ---"
         ] ++ mkMGCharWidgets
           ++ mkMGStatWidgets
@@ -301,6 +304,12 @@ gmcpTrigger ev = do
                     updateMaybeU (mgChar . mgCharPresay)    $ getStringField "presay" g
                     updateMaybeU (mgChar . mgCharTitle)     $ getStringField "title" g
                     updateMaybeU (mgChar . mgCharWizlevel)  $ getIntField "wizlevel" g
+                    case getStringField "guild" g >>= readGuild of
+                        Nothing -> return ()
+                        Just guild -> do
+                                      oldguild <- getU mgGuild
+                                      when (oldguild /= guild) $ setU mgGuild guild
+                                      updateWidgetList
                 "MG.char.info" -> do
                     updateMaybeU (mgChar . mgCharLevel)      $ getIntField "level" g
                     updateMaybeU (mgChar . mgCharGuildLevel) $ getIntField "guild_level" g
@@ -312,12 +321,13 @@ gmcpTrigger ev = do
                     updateMaybeU (mgStats . mgStatLP)   $ getIntField "hp" g
                     updateMaybeU (mgStats . mgStatKP)   $ getIntField "sp" g
                 "comm.channel" -> case getStringField "msg" g of
-                    Just msg -> echoA $ setFg Blue $ toAttrString msg
+                    Just msg -> echoA $ setFg Blue $ toAttrString (rstrip msg)
                     Nothing -> return ()
                 _ -> return ()
             return [ev]
         _ -> return [ev]
-
+    where
+        rstrip = reverse . dropWhile isSpace . reverse
 ------------------------------------------------------------------------------
 
 triggerRegexLine pat = guardLine >=> \s -> guardT (s =~ pat :: Bool) >> return s
@@ -417,7 +427,7 @@ readGuild _             = Nothing
 
 ------------------------------------------------------------------------------
 
-mkMGTanjianWidgets :: MB MGTanjianStats -> [UIWidget]
+mkMGTanjianWidgets :: MB MGTanjianStats -> [UIWidget MB]
 mkMGTanjianWidgets statfun =
     [ UIWidgetText $ return "--- Tanjian ---"
     , UIWidgetTable $ do
@@ -454,9 +464,9 @@ mkMGTanjianWidgets statfun =
     showAkshara Between _ t = "Busy (noch " ++ (show $ 150 - t) ++ "s)"
 
     aksharaTime :: TriState -> Int
-    aksharaTime On = 90
+    aksharaTime On = 75
     aksharaTime Between = 60
-    aksharaTime Off = 30
+    aksharaTime Off = 45
 
 mgTanjianReport x =
     case x =~ "^\\$REPORT\\$ (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) '(.+)' ([JN])([JN])([JN])([JN]) (\\w+) ([ -+]) (\\w+) (\\w+) (\\w+) ([JjN]) (\\d+)" :: [[String]] of
@@ -516,7 +526,7 @@ tanjianTriggers = mgAksharaTimeTriggers
 
 ------------------------------------------------------------------------------
 
-mkMGZaubererWidgets :: MB MGZaubererStats -> [UIWidget]
+mkMGZaubererWidgets :: MB MGZaubererStats -> [UIWidget MB]
 mkMGZaubererWidgets statfun =
     [ UIWidgetText $ return "--- Zauberer ---"
     , UIWidgetTable $ do

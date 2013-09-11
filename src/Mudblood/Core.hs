@@ -14,10 +14,10 @@ module Mudblood.Core
     , command, commands, quit, logger, process, processSend, processTelnet, processTime, mbError
     , connect, modifyTriggers
     , initGMCP
-    , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap, getTime)
-    -- * Widgets
-    , UIWidget (..)
-    , getWidgets, modifyWidgets
+    , MBMonad (echo, echoA, echoErr, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap, getTime)
+    -- * Triggers
+    , MBTriggerF (..)
+    , MBTrigger, MBTriggerFlow
     ) where
 
 import Data.Word
@@ -63,9 +63,12 @@ class (Monad m) => MBMonad m where
     echo :: String -> m ()
     echo = echoA . toAttrString
 
+    echoErr :: String -> m ()
+    echoErr = echoA . (setFg Red) . toAttrString
+
     send :: (Sendable a) => a -> m ()
 
-    ui :: UIAction -> m ()
+    ui :: UIAction MB -> m ()
 
     io :: IO a -> m a
 
@@ -108,7 +111,7 @@ data MBState = MBState {
     mbTrigger :: Maybe MBTriggerFlow,
     mbUserData :: Dynamic,
     mbMap :: Map,
-    mbWidgets :: [UIWidget]
+    mbWidgets :: [UIWidget MB]
 }
 
 -- | Create a new MBState.
@@ -141,7 +144,7 @@ data MBF o = forall a. MBFIO (IO a) (a -> o)
            | MBFSend Communication o
            | MBFConnect String String o
            | MBFQuit o
-           | MBFUI UIAction o
+           | MBFUI (UIAction MB) o
            | MBFGetTime (Int -> o)
 
 instance Functor MBF where
@@ -177,7 +180,7 @@ dispatchConnect h p = liftF $ MBFConnect h p ()
 dispatchQuit :: MB ()
 dispatchQuit = liftF $ MBFQuit ()
 
-dispatchUI :: UIAction -> MB ()
+dispatchUI :: UIAction MB -> MB ()
 dispatchUI a = liftF $ MBFUI a ()
 
 --------------------------------------------------------------------------------------------------
@@ -337,17 +340,26 @@ runTriggerMB (Free (Action (GetMap g))) = getMap >>= runTriggerMB . g
 runTriggerMB (Free (Action (PutMap d x))) = putMap d >> runTriggerMB x
 runTriggerMB (Free (Action (GetTime g))) = getTime >>= runTriggerMB . g
 
---------------------------------------------------------------------------------------------------
+data MBTriggerF i o = forall a. RunIO (IO a) (a -> o)
+                    | Echo AttrString o
+                    | Send Communication o
+                    | GetUserData (Dynamic -> o)
+                    | PutUserData Dynamic o
+                    | GetMap (Map -> o)
+                    | PutMap Map o
+                    | PutUI (UIAction MB) o
+                    | GetTime (Int -> o)
 
--- | Widgets are small pieces of information to be displayed by the screen.
-data UIWidget = UIWidgetText (MB String)        -- ^ A singe line of text
-              | UIWidgetTable (MB [[String]])   -- ^ A table of textual cells
+instance Functor (MBTriggerF i) where
+    fmap f (RunIO io g) = RunIO io $ f . g
+    fmap f (Echo s x) = Echo s $ f x
+    fmap f (Send s x) = Send s $ f x
+    fmap f (GetUserData g) = GetUserData $ f . g
+    fmap f (PutUserData d x) = PutUserData d $ f x
+    fmap f (PutUI a x) = PutUI a $ f x
+    fmap f (GetMap g) = GetMap $ f . g
+    fmap f (PutMap d x) = PutMap d $ f x
+    fmap f (GetTime g) = GetTime $ f . g
 
--- | Get the widget list
-getWidgets :: MB [UIWidget]
-getWidgets = gets mbWidgets >>= return
-
--- | Modify the widget list
-modifyWidgets :: ([UIWidget] -> [UIWidget]) -> MB ()
-modifyWidgets f = modify $ \s -> s { mbWidgets = f (mbWidgets s) }
-
+type MBTrigger a = Trigger (MBTriggerF TriggerEvent) TriggerEvent [TriggerEvent] a
+type MBTriggerFlow = TriggerFlow (MBTriggerF TriggerEvent) TriggerEvent

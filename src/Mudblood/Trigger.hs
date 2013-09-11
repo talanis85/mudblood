@@ -2,11 +2,8 @@
 
 module Mudblood.Trigger
     ( module Control.Trigger
-    , MBTriggerF (..)
     -- * The trigger event type
     , TriggerEvent (LineTEvent, SendTEvent, TelnetTEvent, GMCPTEvent, TimeTEvent)
-    -- * Convenient type aliases
-    , MBTrigger, MBTriggerFlow
     -- * Trigger functions
     -- ** Guards
     , guardT, guardLine, guardSend, guardTime
@@ -33,30 +30,6 @@ import Mudblood.UI
 import Mudblood.Text
 import Mudblood.Mapper.Map
 import Data.GMCP
-
-data MBTriggerF i o = forall a. RunIO (IO a) (a -> o)
-                    | Echo AttrString o
-                    | Send Communication o
-                    | GetUserData (Dynamic -> o)
-                    | PutUserData Dynamic o
-                    | GetMap (Map -> o)
-                    | PutMap Map o
-                    | PutUI UIAction o
-                    | GetTime (Int -> o)
-
-instance Functor (MBTriggerF i) where
-    fmap f (RunIO io g) = RunIO io $ f . g
-    fmap f (Echo s x) = Echo s $ f x
-    fmap f (Send s x) = Send s $ f x
-    fmap f (GetUserData g) = GetUserData $ f . g
-    fmap f (PutUserData d x) = PutUserData d $ f x
-    fmap f (PutUI a x) = PutUI a $ f x
-    fmap f (GetMap g) = GetMap $ f . g
-    fmap f (PutMap d x) = PutMap d $ f x
-    fmap f (GetTime g) = GetTime $ f . g
-
-type MBTrigger a = Trigger (MBTriggerF TriggerEvent) TriggerEvent [TriggerEvent] a
-type MBTriggerFlow = TriggerFlow (MBTriggerF TriggerEvent) TriggerEvent
 
 data TriggerEvent = LineTEvent AttrString   -- ^ Emitted when a line was received from the host
                   | SendTEvent String       -- ^ Emitted when the user wants to send a line of input
