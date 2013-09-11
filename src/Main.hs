@@ -98,8 +98,17 @@ gmcpTrigger = Permanent $ \ev -> do
             return [ev]
         _ -> return [ev]
 
+colorTriggers = (Permanent $ triggerRegexMultiline "^\\[[^\\]]+:[^\\]]+\\]" (color Blue) "^ " (color Blue))
+           :>>: (Permanent $ triggerRegexLine "^<Tanjian>" >=> color Blue)
+           :>>: (Permanent $ triggerRegexMultiline "^.+ teilt Dir mit:" (color Blue) "^ " (color Blue))
+           :>>: (Permanent $ triggerRegexLine "^.+ aus der Ferne\\." >=> color Blue)
+           :>>: (Permanent $ triggerRegexLine "^Balance " >=> color Blue)
 
-triggers = gmcpTrigger :>>: fightColorizer :>>: reportTrigger :>>: colorTriggers :>>: moveTrigger
+triggers = gmcpTrigger
+      :>>: Permanent colorFight
+      :>>: reportTrigger
+      :>>: colorTriggers
+      :>>: moveTrigger
 
 tanjianBindings = [ ([KF1],  spell "meditation")
                   , ([KF2],  spell "kokoro")

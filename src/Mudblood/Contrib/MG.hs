@@ -25,8 +25,9 @@ module Mudblood.Contrib.MG
     -- * Spells
     , spell
     -- * Colors
-    , colorTriggers
-    , fightColorizer
+    , triggerRegexLine, triggerRegexMultiline
+    , color
+    , colorFight
     -- * Guilds
     , readGuild
     -- ** Tanjian
@@ -284,27 +285,28 @@ mkMGMapWidgets =
 
 ------------------------------------------------------------------------------
 
-colorRegex col pat = Permanent $ guardLine >=> \s -> do
-    guardT (s =~ pat :: Bool)
-    returnLine $ setFg col s
+triggerRegexLine pat = guardLine >=> \s -> guardT (s =~ pat :: Bool) >> return s
 
-colorMultilineCommunication :: Color -> String -> MBTriggerFlow
-colorMultilineCommunication color regex = Permanent $ guardLine >=> \l -> do
-    guardT $ l =~ regex
-    l' <- yieldLine (setFg color l) >>= waitForLine
+{-
+triggerRegexMultiline start startt next nextt = guardLine >=> \l -> do
+    guardT $ l =~ start
+    l' <- startt l >>= yield >>= waitForLine
     follow l'
   where
     follow l = do
         if l =~ "^ " then do
-                          l' <- yieldLine (setFg Blue l) >>= waitForLine
+                          l' <- nextt l >>= yield >>= waitForLine
                           follow l'
                      else returnLine l
+-}
 
-colorTriggers = colorMultilineCommunication Blue "^\\[[^\\]]+:[^\\]]+\\]"
-           :>>: colorRegex Blue "^<Tanjian>"
-           :>>: colorMultilineCommunication Blue "^.+ teilt Dir mit:"
-           :>>: colorRegex Blue "^.+ aus der Ferne\\."
-           :>>: colorRegex Blue "^Balance "
+triggerRegexMultiline start startt next nextt = triggerRegexLine start
+                                            >=> startt >=> yield
+                                            >=> whileT guardLine (=~ next) nextt returnLine
+
+colorRegex col pat = Permanent $ guardLine >=> \s -> do
+    guardT (s =~ pat :: Bool)
+    returnLine $ setFg col s
 
 attackMap = [ ("verfehlst ([^%.]+)",                                0,   0,   "")
             , ("kitzelst (.+) am Bauch",                            1,   1,   "kitzelst")
@@ -336,8 +338,8 @@ defenseMap = [ ("verfehlt Dich",                                    0,   0,   ""
              , ("vernichtet Dich",                                  201, 300, "vernichtet Dich")
              ]
 
-fightColorizer :: MBTriggerFlow
-fightColorizer = Permanent $ guardLine >=> \x ->
+colorFight :: TriggerEvent -> MBTrigger [TriggerEvent]
+colorFight = guardLine >=> \x ->
     let attackResult = foldMap (check "^  Du " x) attackMap
         defenseResult = foldMap (check "^  .+ " x) defenseMap
     in case getFirst attackResult of
@@ -351,6 +353,8 @@ fightColorizer = Permanent $ guardLine >=> \x ->
                                             else First Nothing
         formatA l min max = setFg Green (l `mappend` toAttrString (" (" ++ (show min) ++ "-" ++ (show max) ++ ")"))
         formatD l min max = setFg Red (l `mappend` toAttrString (" (" ++ (show min) ++ "-" ++ (show max) ++ ")"))
+
+color c x = returnLine $ setFg c x
 
 ------------------------------------------------------------------------------
 
