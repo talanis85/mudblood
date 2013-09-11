@@ -59,6 +59,15 @@ mgCommands = M.fromList
                             lift $ send first
                             lift $ modifyMap $ mapStep first
         )
+    , ("setcolor", Command ["name", "value"] $ do
+        name <- popStringParam
+        value <- popStringParam
+        case name of
+            "bg" -> lift $ ui $ UISetBgColor value
+            _    -> case nameToColor name of
+                        Nothing -> fail "Invalid color"
+                        Just c -> lift $ ui $ UISetColor c value
+        )
     , ("loadmap", Command ["filename"] $ do
         filename <- popStringParam
         map <- lift $ io $ mapFromFile filename

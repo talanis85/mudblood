@@ -273,6 +273,25 @@ execUIAction action = case action of
         liftIO $ G.labelSetText (ctlStatusSystem ctls) $
             printf "Room: %d" (mapCurrentId map)
     UIUpdateWidgets w -> modify $ \s -> s { scrWidgets = w }
+    UISetBgColor val -> do
+        ctls <- askControls
+        case pangoColorForString val of
+            Nothing -> return ()
+            Just c -> liftIO $ G.widgetModifyBase (ctlMainView ctls) G.StateNormal c
+    UISetColor c val -> do
+        ctls <- askControls
+        tagTable <- liftIO $ G.textBufferGetTagTable (ctlMainBuffer ctls)
+        case c of
+            DefaultColor -> case pangoColorForString val of
+                Nothing -> return ()
+                Just c' -> liftIO $ G.widgetModifyText (ctlMainView ctls) G.StateNormal c'
+            c' -> case colorToName c of
+                    "" -> return ()
+                    colname -> do
+                               tag <- liftIO $ G.textTagTableLookup tagTable colname
+                               case tag of
+                                    Nothing -> return ()
+                                    Just tag' -> liftIO $ G.set tag' [ G.textTagForeground := val ]
 
 ------------------------------------------------------------------------------
 
@@ -287,6 +306,12 @@ tagNameForAttr a = case attrFg a of
     Yellow          -> "yellow"
     Green           -> "green"
     Red             -> "red"
+
+pangoColorForString :: String -> Maybe P.Color
+pangoColorForString x = case x of
+    "black" -> Just $ P.Color 0 0 0
+    "white" -> Just $ P.Color 65000 65000 65000
+    _ -> Nothing
 
 mapKey :: Maybe Char -> String -> Maybe Key
 mapKey chr name = case name of

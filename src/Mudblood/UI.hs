@@ -1,10 +1,11 @@
 module Mudblood.UI
     ( UIValue (UIStringValue, UIIntValue, UINilValue)
-    , UIAction (UIStatus, UISetValue, UIUpdateMap, UIUpdateWidgets)
+    , UIAction (..)
     -- * Widgets
     , UIWidget (..)
     ) where
 
+import Mudblood.Text
 import Mudblood.Mapper.Map
 
 data UIValue = UIStringValue String
@@ -20,6 +21,8 @@ data UIAction m = UIStatus String
                 | UIUpdateMap Map
                 | UISetValue String UIValue
                 | UIUpdateWidgets [UIWidget m]
+                | UISetColor Color String
+                | UISetBgColor String
 
 -- | Widgets are small pieces of information to be displayed by the screen.
 data UIWidget m = UIWidgetText (m String)        -- ^ A singe line of text
