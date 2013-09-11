@@ -20,13 +20,14 @@ module Mudblood.Contrib.MG
     -- * Widgets
     , mkMGStatWidgets
     , updateWidgetList
+    -- * GMCP
+    , gmcpTrigger
     -- * Report
     , reportTrigger
     -- * Spells
     , spell
     -- * Colors
     , triggerRegexLine, triggerRegexMultiline
-    , color
     , colorFight
     -- * Guilds
     , readGuild
@@ -40,6 +41,7 @@ import Data.Foldable
 import Data.Monoid
 import Text.Regex.PCRE
 
+import Data.GMCP
 import Mudblood
 
 ------------------------------------------------------------------------------
@@ -285,28 +287,40 @@ mkMGMapWidgets =
 
 ------------------------------------------------------------------------------
 
-triggerRegexLine pat = guardLine >=> \s -> guardT (s =~ pat :: Bool) >> return s
+gmcpTrigger ev = do
+    case ev of
+        GMCPTEvent g -> do
+            case gmcpModule g of
+                "MG.char.base" -> do
+                    updateMaybeU (mgChar . mgCharName)      $ getStringField "name" g
+                    updateMaybeU (mgChar . mgCharRace)      $ getStringField "race" g
+                    updateMaybeU (mgChar . mgCharPresay)    $ getStringField "presay" g
+                    updateMaybeU (mgChar . mgCharTitle)     $ getStringField "title" g
+                    updateMaybeU (mgChar . mgCharWizlevel)  $ getIntField "wizlevel" g
+                "MG.char.info" -> do
+                    updateMaybeU (mgChar . mgCharLevel)      $ getIntField "level" g
+                    updateMaybeU (mgChar . mgCharGuildLevel) $ getIntField "guild_level" g
+                    updateMaybeU (mgChar . mgCharGuildTitle) $ getStringField "guild_title" g
+                "MG.char.maxvitals" -> do
+                    updateMaybeU (mgStats . mgStatMLP)  $ getIntField "max_hp" g
+                    updateMaybeU (mgStats . mgStatMKP)  $ getIntField "max_sp" g
+                "MG.char.vitals" -> do
+                    updateMaybeU (mgStats . mgStatLP)   $ getIntField "hp" g
+                    updateMaybeU (mgStats . mgStatKP)   $ getIntField "sp" g
+                "comm.channel" -> case getStringField "msg" g of
+                    Just msg -> echoA $ setFg Blue $ toAttrString msg
+                    Nothing -> return ()
+                _ -> return ()
+            return [ev]
+        _ -> return [ev]
 
-{-
-triggerRegexMultiline start startt next nextt = guardLine >=> \l -> do
-    guardT $ l =~ start
-    l' <- startt l >>= yield >>= waitForLine
-    follow l'
-  where
-    follow l = do
-        if l =~ "^ " then do
-                          l' <- nextt l >>= yield >>= waitForLine
-                          follow l'
-                     else returnLine l
--}
+------------------------------------------------------------------------------
+
+triggerRegexLine pat = guardLine >=> \s -> guardT (s =~ pat :: Bool) >> return s
 
 triggerRegexMultiline start startt next nextt = triggerRegexLine start
                                             >=> startt >=> yield
                                             >=> whileT guardLine (=~ next) nextt returnLine
-
-colorRegex col pat = Permanent $ guardLine >=> \s -> do
-    guardT (s =~ pat :: Bool)
-    returnLine $ setFg col s
 
 attackMap = [ ("verfehlst ([^%.]+)",                                0,   0,   "")
             , ("kitzelst (.+) am Bauch",                            1,   1,   "kitzelst")
@@ -354,8 +368,6 @@ colorFight = guardLine >=> \x ->
         formatA l min max = setFg Green (l `mappend` toAttrString (" (" ++ (show min) ++ "-" ++ (show max) ++ ")"))
         formatD l min max = setFg Red (l `mappend` toAttrString (" (" ++ (show min) ++ "-" ++ (show max) ++ ")"))
 
-color c x = returnLine $ setFg c x
-
 ------------------------------------------------------------------------------
 
 spell :: (MBMonad m) => String -> m ()
@@ -380,8 +392,8 @@ spell sp = do
 
 ------------------------------------------------------------------------------
 
-reportTrigger :: MBTriggerFlow
-reportTrigger = Permanent $ guardLine >=> \x -> do
+reportTrigger :: TriggerEvent -> MBTrigger [TriggerEvent]
+reportTrigger = guardLine >=> \x -> do
     guild <- getU mgGuild
     case guild of
         MGGuildZauberer -> mgZaubererReport x

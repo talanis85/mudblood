@@ -3,7 +3,6 @@ import Mudblood.Screen.Gtk
 
 import Data.Array
 import Data.Dynamic
-import Data.GMCP
 
 import Control.Concurrent hiding (yield)
 import Control.Concurrent.STM
@@ -71,44 +70,17 @@ mgCommands = M.fromList
 
 -- TRIGGERS -----------------------------------------------------------
 
-gmcpTrigger = Permanent $ \ev -> do
-    case ev of
-        GMCPTEvent g -> do
-            case gmcpModule g of
-                "MG.char.base" -> do
-                    updateMaybeU (mgChar . mgCharName)      $ getStringField "name" g
-                    updateMaybeU (mgChar . mgCharRace)      $ getStringField "race" g
-                    updateMaybeU (mgChar . mgCharPresay)    $ getStringField "presay" g
-                    updateMaybeU (mgChar . mgCharTitle)     $ getStringField "title" g
-                    updateMaybeU (mgChar . mgCharWizlevel)  $ getIntField "wizlevel" g
-                "MG.char.info" -> do
-                    updateMaybeU (mgChar . mgCharLevel)      $ getIntField "level" g
-                    updateMaybeU (mgChar . mgCharGuildLevel) $ getIntField "guild_level" g
-                    updateMaybeU (mgChar . mgCharGuildTitle) $ getStringField "guild_title" g
-                "MG.char.maxvitals" -> do
-                    updateMaybeU (mgStats . mgStatMLP)  $ getIntField "max_hp" g
-                    updateMaybeU (mgStats . mgStatMKP)  $ getIntField "max_sp" g
-                "MG.char.vitals" -> do
-                    updateMaybeU (mgStats . mgStatLP)   $ getIntField "hp" g
-                    updateMaybeU (mgStats . mgStatKP)   $ getIntField "sp" g
-                "comm.channel" -> case getStringField "msg" g of
-                    Just msg -> echoA $ setFg Blue $ toAttrString msg
-                    Nothing -> return ()
-                _ -> return ()
-            return [ev]
-        _ -> return [ev]
+colorTriggers = (Permanent $ triggerRegexMultiline "^\\[[^\\]]+:[^\\]]+\\]" (colorize Blue) "^ " (colorize Blue))
+           :>>: (Permanent $ triggerRegexLine "^<Tanjian>" >=> colorize Blue)
+           :>>: (Permanent $ triggerRegexMultiline "^.+ teilt Dir mit:" (colorize Blue) "^ " (colorize Blue))
+           :>>: (Permanent $ triggerRegexLine "^.+ aus der Ferne\\." >=> colorize Blue)
+           :>>: (Permanent $ triggerRegexLine "^Balance " >=> colorize Blue)
 
-colorTriggers = (Permanent $ triggerRegexMultiline "^\\[[^\\]]+:[^\\]]+\\]" (color Blue) "^ " (color Blue))
-           :>>: (Permanent $ triggerRegexLine "^<Tanjian>" >=> color Blue)
-           :>>: (Permanent $ triggerRegexMultiline "^.+ teilt Dir mit:" (color Blue) "^ " (color Blue))
-           :>>: (Permanent $ triggerRegexLine "^.+ aus der Ferne\\." >=> color Blue)
-           :>>: (Permanent $ triggerRegexLine "^Balance " >=> color Blue)
-
-triggers = gmcpTrigger
+triggers = Permanent gmcpTrigger
       :>>: Permanent colorFight
-      :>>: reportTrigger
+      :>>: Permanent reportTrigger
       :>>: colorTriggers
-      :>>: moveTrigger
+      :>>: Permanent moveTrigger
 
 tanjianBindings = [ ([KF1],  spell "meditation")
                   , ([KF2],  spell "kokoro")

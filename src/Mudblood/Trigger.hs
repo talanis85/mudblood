@@ -18,6 +18,9 @@ module Mudblood.Trigger
     , returnLine, returnSend
     -- ** Kleisli arrow
     , (>=>)
+    -- * Common triggers
+    -- ** Coloring
+    , colorize
     ) where
 
 import Control.Trigger
@@ -98,3 +101,7 @@ waitForSend ev = case ev of
 returnLine x = return [LineTEvent x]
 -- | Return a send event
 returnSend x = return [SendTEvent x]
+
+-- | Colorize an AttrString
+colorize :: (Functor f) => Color -> AttrString -> Trigger f i y [TriggerEvent]
+colorize c x = returnLine $ setFg c x
