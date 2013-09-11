@@ -5,6 +5,7 @@ module Mudblood.Text
       -- * Attributed strings
       Attr (attrStyle, attrFg, attrBg), AttrString
     , Style (StyleNormal, StyleBold, StyleUnderline)
+    , Color (DefaultColor, Black, White, Cyan, Magenta, Blue, Yellow, Green, Red)
     , defaultAttr
     -- * Conversion to and from strings
     , decode, toAttrString, fromAttrString
@@ -14,8 +15,7 @@ module Mudblood.Text
     -- * Setting attributes
     , setFg, setBg, setStyle
     -- * Colors
-    , Color (DefaultColor, Black, White, Cyan, Magenta, Blue, Yellow, Green, Red)
-    , intToColor, nameToColor, colorToName
+    , colorToName, intToColor, nameToColor
     ) where
 
 import Data.Char
@@ -54,21 +54,8 @@ intToColor x = case x of
     7 -> Red
     _ -> DefaultColor
 
-nameToColor :: String -> Maybe Color
-nameToColor x = case x of
-    "black" -> Just Black
-    "white" -> Just White
-    "cyan" -> Just Cyan
-    "magenta" -> Just Magenta
-    "blue" -> Just Blue
-    "yellow" -> Just Yellow
-    "green" -> Just Green
-    "red" -> Just Red
-    "default" -> Just DefaultColor
-    _ -> Nothing
-
 colorToName :: Color -> String
-colorToName x = case x of
+colorToName c = case c of
     Black -> "black"
     White -> "white"
     Cyan -> "cyan"
@@ -78,6 +65,18 @@ colorToName x = case x of
     Green -> "green"
     Red -> "red"
     DefaultColor -> ""
+
+nameToColor :: String -> Maybe Color
+nameToColor s = case s of
+    "black" -> Just Black
+    "white" -> Just White
+    "cyan" -> Just Cyan
+    "magenta" -> Just Magenta
+    "blue" -> Just Blue
+    "yellow" -> Just Yellow
+    "green" -> Just Green
+    "red" -> Just Red
+    _ -> Nothing
 
 data Attr = Attr {
     attrStyle :: Style,

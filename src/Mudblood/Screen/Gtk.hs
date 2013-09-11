@@ -40,6 +40,7 @@ import Mudblood.Core
 import Mudblood.Telnet
 import Mudblood.Keys
 import Mudblood.Text
+import Mudblood.Colour
 import Mudblood.UI
 import Mudblood.Mapper
 
@@ -275,23 +276,25 @@ execUIAction action = case action of
     UIUpdateWidgets w -> modify $ \s -> s { scrWidgets = w }
     UISetBgColor val -> do
         ctls <- askControls
-        case pangoColorForString val of
+        case parseColour val of
             Nothing -> return ()
-            Just c -> liftIO $ G.widgetModifyBase (ctlMainView ctls) G.StateNormal c
+            Just c -> liftIO $ G.widgetModifyBase (ctlMainView ctls) G.StateNormal (colourToGdk c)
     UISetColor c val -> do
         ctls <- askControls
         tagTable <- liftIO $ G.textBufferGetTagTable (ctlMainBuffer ctls)
         case c of
-            DefaultColor -> case pangoColorForString val of
+            DefaultColor -> case parseColour val of
                 Nothing -> return ()
-                Just c' -> liftIO $ G.widgetModifyText (ctlMainView ctls) G.StateNormal c'
+                Just c' -> liftIO $ G.widgetModifyText (ctlMainView ctls) G.StateNormal (colourToGdk c')
             c' -> case colorToName c of
                     "" -> return ()
-                    colname -> do
+                    colname -> case parseColour val of
+                        Nothing -> return ()
+                        Just val' -> do
                                tag <- liftIO $ G.textTagTableLookup tagTable colname
                                case tag of
                                     Nothing -> return ()
-                                    Just tag' -> liftIO $ G.set tag' [ G.textTagForeground := val ]
+                                    Just tag' -> liftIO $ G.set tag' [ G.textTagForegroundGdk := colourToGdk val' ]
 
 ------------------------------------------------------------------------------
 

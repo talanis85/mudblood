@@ -64,6 +64,7 @@ mgCommands = M.fromList
         value <- popStringParam
         case name of
             "bg" -> lift $ ui $ UISetBgColor value
+            "default" -> lift $ ui $ UISetColor DefaultColor value
             _    -> case nameToColor name of
                         Nothing -> fail "Invalid color"
                         Just c -> lift $ ui $ UISetColor c value
