@@ -79,6 +79,7 @@ colorTriggers = (Permanent $ triggerRegexMultiline "^\\[[^\\]]+:[^\\]]+\\]" (col
 triggers = Permanent gmcpTrigger
       :>>: Permanent colorFight
       :>>: Permanent reportTrigger
+      :>>: guildTriggers
       :>>: colorTriggers
       :>>: Permanent moveTrigger
 

@@ -42,6 +42,7 @@ data MBTriggerF i o = forall a. RunIO (IO a) (a -> o)
                     | GetMap (Map -> o)
                     | PutMap Map o
                     | PutUI UIAction o
+                    | GetTime (Int -> o)
 
 instance Functor (MBTriggerF i) where
     fmap f (RunIO io g) = RunIO io $ f . g
@@ -52,6 +53,7 @@ instance Functor (MBTriggerF i) where
     fmap f (PutUI a x) = PutUI a $ f x
     fmap f (GetMap g) = GetMap $ f . g
     fmap f (PutMap d x) = PutMap d $ f x
+    fmap f (GetTime g) = GetTime $ f . g
 
 type MBTrigger a = Trigger (MBTriggerF TriggerEvent) TriggerEvent [TriggerEvent] a
 type MBTriggerFlow = TriggerFlow (MBTriggerF TriggerEvent) TriggerEvent

@@ -30,7 +30,7 @@ module Mudblood.Contrib.MG
     , triggerRegexLine, triggerRegexMultiline
     , colorFight
     -- * Guilds
-    , readGuild
+    , readGuild, guildTriggers
     -- ** Tanjian
     -- ** Zauberer
     ) where
@@ -56,6 +56,8 @@ data MGTanjianStats = MGTanjianStats
     , _mgTanjianStatTE :: TriState
     , _mgTanjianStatHA :: Bool
     , _mgTanjianStatAK :: TriState
+    , _mgTanjianStatAKQuality :: TriState
+    , _mgTanjianStatAKTime :: Int
     }
 
 mkMGTanjianStats = MGTanjianStats
@@ -64,6 +66,8 @@ mkMGTanjianStats = MGTanjianStats
     , _mgTanjianStatTE = Off
     , _mgTanjianStatHA = False
     , _mgTanjianStatAK = Off
+    , _mgTanjianStatAKQuality = Off
+    , _mgTanjianStatAKTime = 0
     }
 
 makeLenses ''MGTanjianStats
@@ -400,6 +404,9 @@ reportTrigger = guardLine >=> \x -> do
         MGGuildTanjian  -> mgTanjianReport x
         _               -> returnLine x
 
+guildTriggers :: MBTriggerFlow
+guildTriggers = tanjianTriggers
+
 ------------------------------------------------------------------------------
 
 readGuild :: String -> Maybe MGGuild
@@ -415,13 +422,16 @@ mkMGTanjianWidgets statfun =
     [ UIWidgetText $ return "--- Tanjian ---"
     , UIWidgetTable $ do
             stats <- statfun
+            t <- getTime
             return
                 [ [ "Meditation:",  showMeditation $ stats ^. mgTanjianStatM ]
                 , [ "Kokoro:",      showBool $ stats ^. mgTanjianStatKO ]
                 , [ "Tegatana:",    showTegatana $ stats ^. mgTanjianStatTE ]
                 , [ "Omamori:",     showOmamori $ stats ^. mgTanjianStatTE ]
                 , [ "Hayai:",       showBool $ stats ^. mgTanjianStatHA ]
-                , [ "Akshara:",     showAkshara $ stats ^. mgTanjianStatAK ]
+                , [ "Akshara:",     showAkshara (stats ^. mgTanjianStatAK)
+                                                (stats ^. mgTanjianStatAKQuality)
+                                                (t - (stats ^. mgTanjianStatAKTime)) ]
                 ]
     ]
   where
@@ -438,9 +448,15 @@ mkMGTanjianWidgets statfun =
     showOmamori Between = "Ja"
     showOmamori _       = "Nein"
 
-    showAkshara On = "Ja"
-    showAkshara Off = "Nein"
-    showAkshara Between = "Busy"
+    showAkshara :: TriState -> TriState -> Int -> String
+    showAkshara On q t = "Ja (noch " ++ (show $ (aksharaTime q) - t) ++ "s)"
+    showAkshara Off _ _ = "Nein"
+    showAkshara Between _ t = "Busy (noch " ++ (show $ 150 - t) ++ "s)"
+
+    aksharaTime :: TriState -> Int
+    aksharaTime On = 90
+    aksharaTime Between = 60
+    aksharaTime Off = 30
 
 mgTanjianReport x =
     case x =~ "^\\$REPORT\\$ (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) '(.+)' ([JN])([JN])([JN])([JN]) (\\w+) ([ -+]) (\\w+) (\\w+) (\\w+) ([JjN]) (\\d+)" :: [[String]] of
@@ -478,6 +494,25 @@ mgTanjianReport x =
 
             return []
         [] -> returnLine x
+
+mgAksharaTimeTriggers :: MBTriggerFlow
+mgAksharaTimeTriggers = Permanent ak1 :>>: Permanent ak2 :>>: Permanent ak3
+    where
+        ak1 = triggerRegexLine "^Deine Haende fangen ploetzlich an, leicht zu leuchten." >=> \x -> do
+                                              getTime >>= setU (mgTanjianStats . mgTanjianStatAKTime)
+                                              setU (mgTanjianStats . mgTanjianStatAKQuality) Off
+                                              returnLine x
+        ak2 = triggerRegexLine "^Deine Haende fangen ploetzlich an, hell zu leuchten." >=> \x -> do
+                                              getTime >>= setU (mgTanjianStats . mgTanjianStatAKTime)
+                                              setU (mgTanjianStats . mgTanjianStatAKQuality) Between
+                                              returnLine x
+        ak3 = triggerRegexLine "^Deine Haende fangen ploetzlich an, sehr hell zu leuchten." >=> \x -> do
+                                              getTime >>= setU (mgTanjianStats . mgTanjianStatAKTime)
+                                              setU (mgTanjianStats . mgTanjianStatAKQuality) On
+                                              returnLine x
+
+tanjianTriggers :: MBTriggerFlow
+tanjianTriggers = mgAksharaTimeTriggers
 
 ------------------------------------------------------------------------------
 

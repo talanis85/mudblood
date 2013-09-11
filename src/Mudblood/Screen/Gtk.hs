@@ -116,6 +116,7 @@ mb mb = do
     interpMB (Free (MBFSend d x)) = sendSocket d >> interpMB x
     interpMB (Free (MBFQuit x)) = liftIO (G.mainQuit) >> interpMB x
     interpMB (Free (MBFUI a x)) = execUIAction a >> interpMB x
+    interpMB (Free (MBFGetTime g)) = gets scrTime >>= interpMB . g
 
 ------------------------------------------------------------------------------
 
@@ -396,6 +397,7 @@ updateTimer :: Int -> Screen ()
 updateTimer n = do
     modify $ \s -> s { scrTime = n }
     mb $ processTime n
+    updateWidgets
 
 -- | Run the screen
 execScreen :: MBConfig -> MBState -> Screen () -> IO ()

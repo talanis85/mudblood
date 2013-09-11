@@ -9,12 +9,12 @@ module Mudblood.Core
     , LogSeverity (LogDebug, LogInfo, LogWarning, LogError)
     , MBCommand
     -- * The MBF Functor
-    , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI)
+    , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI, MBFGetTime)
     -- * MB primitives
     , command, commands, quit, logger, process, processSend, processTelnet, processTime, mbError
     , connect, modifyTriggers
     , initGMCP
-    , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap)
+    , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap, getTime)
     -- * Widgets
     , UIWidget (..)
     , getWidgets, modifyWidgets
@@ -98,6 +98,8 @@ class (Monad m) => MBMonad m where
     modifyMap :: (Map -> Map) -> m ()
     modifyMap f = getMap >>= putMap . f
 
+    getTime :: m Int
+
 --------------------------------------------------------------------------------------------------
 
 data MBState = MBState {
@@ -140,6 +142,7 @@ data MBF o = forall a. MBFIO (IO a) (a -> o)
            | MBFConnect String String o
            | MBFQuit o
            | MBFUI UIAction o
+           | MBFGetTime (Int -> o)
 
 instance Functor MBF where
     fmap f (MBFIO action g) = MBFIO action $ f . g
@@ -148,6 +151,7 @@ instance Functor MBF where
     fmap f (MBFSend dat x) = MBFSend dat $ f x
     fmap f (MBFConnect host port x) = MBFConnect host port $ f x
     fmap f (MBFQuit x) = MBFQuit $ f x
+    fmap f (MBFGetTime g) = MBFGetTime $ f . g
 
 --------------------------------------------------------------------------------------------------
 
@@ -300,6 +304,8 @@ instance MBMonad MB where
     putMap d = do modify $ \s -> s { mbMap = d }
                   dispatchUI $ UIUpdateMap d
 
+    getTime = liftF $ MBFGetTime id
+
 --------------------------------------------------------------------------------------------------
 
 instance MBMonad (Trigger (MBTriggerF i) i y) where
@@ -314,6 +320,8 @@ instance MBMonad (Trigger (MBTriggerF i) i y) where
     getMap = liftF $ Action $ GetMap id
     putMap d = liftF $ Action $ PutMap d ()
 
+    getTime = liftF $ Action $ GetTime id
+
 -- | Interpreter for the Trigger Monad
 runTriggerMB :: Trigger (MBTriggerF i) i o o -> MB (TriggerResult (MBTriggerF i) i o o)
 runTriggerMB (Pure r) = return $ TResult r
@@ -327,6 +335,7 @@ runTriggerMB (Free (Action (PutUI a x))) = ui a >> runTriggerMB x
 runTriggerMB (Free (Action (RunIO action f))) = io action >>= runTriggerMB . f
 runTriggerMB (Free (Action (GetMap g))) = getMap >>= runTriggerMB . g
 runTriggerMB (Free (Action (PutMap d x))) = putMap d >> runTriggerMB x
+runTriggerMB (Free (Action (GetTime g))) = getTime >>= runTriggerMB . g
 
 --------------------------------------------------------------------------------------------------
 
