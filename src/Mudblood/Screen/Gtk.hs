@@ -19,6 +19,9 @@ import qualified Data.Trie as Trie
 
 import Text.Printf (printf)
 
+import Control.Concurrent
+import Data.Time.Clock.POSIX
+
 import Control.Monad.State
 import Control.Monad.Trans
 import Control.Monad.Reader
@@ -65,6 +68,8 @@ data ScreenState = ScreenState {
     scrMBConfig :: MBConfig,
 
     scrSocket :: Maybe TelnetSocket,
+
+    scrTime :: Int,
 
     --scrMode :: Mode,
     
@@ -381,6 +386,17 @@ initUI path stref = do
 
     return controls
 
+runTimer :: ScreenControls -> IORef ScreenState -> IO ()
+runTimer ctrls stref = forever $ do
+    t <- getPOSIXTime
+    G.postGUIAsync $ runScreen ctrls stref $ updateTimer (floor $ toRational t)
+    threadDelay 1000000
+
+updateTimer :: Int -> Screen ()
+updateTimer n = do
+    modify $ \s -> s { scrTime = n }
+    mb $ processTime n
+
 -- | Run the screen
 execScreen :: MBConfig -> MBState -> Screen () -> IO ()
 execScreen conf initMBState action =
@@ -390,6 +406,7 @@ execScreen conf initMBState action =
     --gladepath <- getDataFileName "gui.glade"
     --ctrls <- initUI gladepath stref
     ctrls <- initUI "gui.glade" stref
+    forkIO $ runTimer ctrls stref
     runScreen ctrls stref action
     st <- readIORef stref
     case scrSocket st of
@@ -407,7 +424,8 @@ execScreen conf initMBState action =
         scrMBConfig = conf,
         scrMBState = initMBState,
         scrSocket = Nothing,
-        scrQuit = False
+        scrQuit = False,
+        scrTime = 0
     }
 
 ------------------------------------------------------------------------------

@@ -4,18 +4,18 @@ module Mudblood.Trigger
     ( module Control.Trigger
     , MBTriggerF (..)
     -- * The trigger event type
-    , TriggerEvent (LineTEvent, SendTEvent, TelnetTEvent, GMCPTEvent)
+    , TriggerEvent (LineTEvent, SendTEvent, TelnetTEvent, GMCPTEvent, TimeTEvent)
     -- * Convenient type aliases
     , MBTrigger, MBTriggerFlow
     -- * Trigger functions
     -- ** Guards
-    , guardT, guardLine, guardSend
+    , guardT, guardLine, guardSend, guardTime
     -- ** Yielding
-    , yieldLine, yieldSend
+    , yieldLine, yieldSend, yieldTime
     -- ** Waiting
     , waitForLine, waitForSend
     -- ** Returning
-    , returnLine, returnSend
+    , returnLine, returnSend, returnTime
     -- ** Kleisli arrow
     , (>=>)
     -- * Common triggers
@@ -60,6 +60,7 @@ data TriggerEvent = LineTEvent AttrString   -- ^ Emitted when a line was receive
                   | SendTEvent String       -- ^ Emitted when the user wants to send a line of input
                   | TelnetTEvent TelnetNeg  -- ^ Emitted when a telnet negotiation is received
                   | GMCPTEvent GMCP         -- ^ Emitted when a GMCP telneg is received
+                  | TimeTEvent Int          -- ^ Emitted every second. Argument is current POSIX timestamp.
     deriving (Eq)
 
 -- | Fail if the condition is False.
@@ -77,6 +78,11 @@ guardSend ev = case ev of
     SendTEvent s -> return s
     _            -> failT
 
+guardTime :: (Functor f) => TriggerEvent -> Trigger f i y Int
+guardTime ev = case ev of
+    TimeTEvent s -> return s
+    _            -> failT
+
 -- | Yield a line event
 yieldLine :: (Functor f) => AttrString -> Trigger f i [TriggerEvent] i
 yieldLine x = yield [LineTEvent x]
@@ -84,6 +90,10 @@ yieldLine x = yield [LineTEvent x]
 -- | Yield a send event
 yieldSend :: (Functor f) => String -> Trigger f i [TriggerEvent] i
 yieldSend x = yield [SendTEvent x]
+
+-- | Yield a timer event
+yieldTime :: (Functor f) => Int -> Trigger f i [TriggerEvent] i
+yieldTime x = yield [TimeTEvent x]
 
 -- | Wait for a line event
 waitForLine :: (Functor f) => TriggerEvent -> Trigger f i y AttrString
@@ -101,6 +111,8 @@ waitForSend ev = case ev of
 returnLine x = return [LineTEvent x]
 -- | Return a send event
 returnSend x = return [SendTEvent x]
+-- | Return a timer event
+returnTime x = return [TimeTEvent x]
 
 -- | Colorize an AttrString
 colorize :: (Functor f) => Color -> AttrString -> Trigger f i y [TriggerEvent]

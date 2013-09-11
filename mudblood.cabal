@@ -30,7 +30,7 @@ executable mudblood
     build-depends:      base, mtl, stm, utf8-string, bytestring,
                         network, hint, containers, split, binary,
                         parsec, either, regex-base, regex-pcre-builtin, array,
-                        free, json, fgl, filepath, directory, lens
+                        free, json, fgl, filepath, directory, lens, time
     hs-source-dirs:     src
 
     if os(windows)

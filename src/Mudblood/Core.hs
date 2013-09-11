@@ -11,7 +11,7 @@ module Mudblood.Core
     -- * The MBF Functor
     , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI)
     -- * MB primitives
-    , command, commands, quit, logger, process, processSend, processTelnet, mbError
+    , command, commands, quit, logger, process, processSend, processTelnet, processTime, mbError
     , connect, modifyTriggers
     , initGMCP
     , MBMonad (echo, echoA, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap)
@@ -251,6 +251,9 @@ processTelnet neg = case neg of
     -- Else: output telneg
     x -> echoA (setFg Magenta (toAttrString $ show x))
 
+processTime :: Int -> MB ()
+processTime n = trigger $ TimeTEvent n
+
 -- | Feed a trigger event to the global trigger chain.
 trigger :: TriggerEvent -> MB ()
 trigger ev =
@@ -269,6 +272,7 @@ trigger ev =
         SendTEvent line -> send line
         TelnetTEvent t -> return ()
         GMCPTEvent g -> return ()
+        TimeTEvent n -> return ()
 
 -- | Output an error.
 mbError :: String -> MB ()
