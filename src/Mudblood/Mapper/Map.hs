@@ -11,11 +11,12 @@ module Mudblood.Mapper.Map
     -- * Loading maps
     , mapEmpty, mapFromString, mapFromFile
     -- * Transforming a map
-    , mapStep
+    , mapStep, mapFly
     -- * Querying a map
     , mapCurrentData
     , findNextRoom
     , shortestPath
+    , findRoomsWith
     -- * Handling User Data
     , getUserValue, putUserValue
     ) where
@@ -227,7 +228,7 @@ mapMapGraph :: (MapGraph -> MapGraph) -> Map -> Map
 mapMapGraph f g = g { mapGraph = f (mapGraph g) }
 
 -- | Shortest path from one room to another.
-shortestPath :: (Real w) => Map -> (ExitData -> w) -> Int -> Int -> [String]
+shortestPath :: (Real w) => Map -> (ExitData -> w) -> Node -> Node -> [String]
 shortestPath m weightfun src dest = let graph = mapGraph m
                                     in case sp src dest (emap weightfun graph) of
                                         []            -> []
@@ -236,6 +237,11 @@ shortestPath m weightfun src dest = let graph = mapGraph m
     where foldPath graph (s, p) d = let (_, _, edge) = head $ filter (goesTo d) $ out graph s
                                     in (d, (exitKey edge):p)
           goesTo d' (_, d, _) = d == d'
+
+findRoomsWith :: (RoomData -> Bool) -> Map -> [Node]
+findRoomsWith f m = let graph = mapGraph m
+                        folder ctx accu = if f (lab' ctx) then (node' ctx) : accu else accu
+                    in ufold folder [] graph
 
 ------------------------------------------------------------------------------
 
@@ -251,3 +257,5 @@ mapStep key m = case findNextRoom key m (mapCurrentId m) of
     Nothing -> m
     Just n  -> m { mapCurrentId = n }
 
+mapFly :: Node -> Map -> Map
+mapFly n m = m { mapCurrentId = n }
