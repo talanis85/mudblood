@@ -387,9 +387,11 @@ colorFight = guardLine >=> \x ->
 spell :: (MBMonad m) => String -> m ()
 spell sp = do
     focus <- getU mgFocus
-    case focus of
-        Nothing -> send sp
-        Just f  -> send $ replace "%f" f sp
+    let final = case focus of
+                    Nothing -> sp
+                    Just f  -> replace "%f" f sp
+    echoA $ (toAttrString "> ") `mappend` (setFg Yellow $ toAttrString final)
+    send final
   where
     replace :: Eq a => [a] -> [a] -> [a] -> [a]
     replace needle replacement haystack
