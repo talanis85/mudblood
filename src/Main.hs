@@ -39,25 +39,32 @@ mgCommands = M.fromList
     , ("profile", Command ["name"] $ do
         popStringParam >>= lift . loadProfile
         )
-    , ("guild", Command ["name"] $ popStringParam >>= lift . setGuild)
     , ("focus", Command ["name"] $ popStringParam >>= lift . setFocus)
+    , ("fly", Command ["destination"] $ do
+        map <- lift $ getMap
+        dest <- popStringParam
+
+        case findRoomsWith (\x -> getUserValue "tag" (roomUserData x) == dest) map of
+            [] -> fail "Room not found"
+            (destroom:_) -> lift $ modifyMap $ mapFly destroom
+        )
     , ("walk", Command ["destination"] $ do
         map <- lift $ getMap
-        dest <- popIntParam
+        dest <- popStringParam
 
-        let walkerFun = const $ return WalkerContinue
-        --let walkerFun ev = do
-        --    if ev == SendTEvent "next"
-        --        then return WalkerContinue            
-        --        else return WalkerPause
+        case findRoomsWith (\x -> getUserValue "tag" (roomUserData x) == dest) map of
+            [] -> fail "Room not found"
+            (destroom:_) -> do
+                let walkerFun = const $ return WalkerContinue
+                let weightfun edge = max (1 :: Int) (getUserValue "weight" (exitUserData edge))
 
-        case shortestPath map (const 1) (mapCurrentId map) dest of
-            []           -> fail "Path not found"
-            (first:path) -> do
-                            lift $ echo $ "Path is: " ++ show (first:path)
-                            lift $ modifyTriggers $ fmap (:>>: (walker walkerFun path))
-                            lift $ send first
-                            lift $ modifyMap $ mapStep first
+                case shortestPath map weightfun (mapCurrentId map) destroom of
+                    []           -> fail "Path not found"
+                    (first:path) -> do
+                                    lift $ echo $ "Path is: " ++ show (first:path)
+                                    lift $ modifyTriggers $ fmap (:>>: (walker walkerFun path))
+                                    lift $ send first
+                                    lift $ modifyMap $ mapStep first
         )
     , ("setcolor", Command ["name", "value"] $ do
         name <- popStringParam
@@ -118,6 +125,7 @@ boot =
     mb $ updateWidgetList
 
     mb $ connect "mg.mud.de" "4711"
+    --mb $ connect "openfish" "9999"
 
     -- Read rc file
     mbpath <- mb $ io $ initUserPath []
