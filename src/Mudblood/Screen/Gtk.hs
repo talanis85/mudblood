@@ -475,7 +475,7 @@ handleKey key = do
                            KEnter -> do
                                      text <- liftIO $ G.get (ctlMainInput ctrls) G.entryText
                                      case text of
-                                        ('/':cmd) -> mb $ command cmd
+                                        cmd@('(':_) -> mb $ command cmd
                                         _ -> do
                                              mb $ echoA $ (toAttrString $ (scrMarkedPrompt st) ++ (scrPrompt st))
                                                           `mappend`

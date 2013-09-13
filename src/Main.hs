@@ -10,6 +10,8 @@ import Control.Concurrent hiding (yield)
 import Control.Concurrent.STM
 import Control.Monad hiding (guard)
 
+import Language.DLisp.Base
+
 import qualified Data.Map as M
 
 import Text.Printf
@@ -18,6 +20,73 @@ import Mudblood.Contrib.MG
 
 -- COMMANDS ------------------------------------------------------------
 
+cmds =
+    [ ("quit", Function [] $ liftL quit >> return nil)
+    , ("echo", Function ["string"] $ do
+        x <- getSymbol "string" >>= typeString
+        liftL $ echo x
+        return nil
+      )
+    , ("connect", Function ["host", "port"] $ do
+        h <- getSymbol "host" >>= typeString
+        p <- getSymbol "port" >>= typeInt
+        liftL $ connect h (show p)
+        return nil
+      )
+    , ("send", Function ["data"] $ do
+        d <- getSymbol "data" >>= typeString
+        liftL $ send d
+        return nil
+      )
+    , ("addprofile", Function ["name"] $ do
+        name <- getSymbol "name" >>= typeString
+        liftL $ addProfile name
+        return nil
+      )
+    , ("profile", Function ["name"] $ do
+        name <- getSymbol "name" >>= typeString
+        liftL $ loadProfile name
+        return nil
+      )
+    , ("focus", Function ["..."] $ do
+        args <- getSymbol "..." >>= typeList
+        case args of
+            [] -> liftL (getU mgFocus) >>= return . mkStringValue . fromMaybe ""
+            (x:[]) -> do
+                f <- typeString x
+                liftL $ setU mgFocus (if f == "" then Nothing else Just f)
+                return $ mkStringValue f
+      )
+    , ("map.findTag", Function ["tag"] $ do
+        tag <- getSymbol "tag" >>= typeString
+        map <- liftL $ getMap
+        case findRoomsWith (\x -> getUserValue "tag" (roomUserData x) == tag) map of
+            [] -> return nil
+            (destroom:_) -> return $ mkIntValue destroom
+        )
+    , ("map.findHash", Function ["hash"] $ do
+        tag <- getSymbol "hash" >>= typeString
+        map <- liftL $ getMap
+        case findRoomsWith (\x -> getUserValue "hash" (roomUserData x) == tag) map of
+            [] -> return nil
+            (destroom:_) -> return $ mkIntValue destroom
+        )
+    , ("map.load", Function ["filename"] $ do
+        filename <- getSymbol "filename" >>= typeString
+        map <- liftL $ io $ mapFromFile filename
+        case map of
+            Just map' -> do
+                         liftL $ putMap map'
+            Nothing -> throwError "File not found"
+        return nil
+        )
+    , ("map.fly", Function ["room"] $ do
+        room <- getSymbol "room" >>= typeInt
+        liftL $ modifyMap $ mapFly room
+        return nil
+      )
+    ]
+{-
 mgCommands = M.fromList
     [ ("echo", Command ["text"] $ do
         x <- popStringParam
@@ -88,6 +157,7 @@ mgCommands = M.fromList
             Nothing -> lift $ echo "Invalid map file"
         )
     ]
+-}
 
 -- TRIGGERS -----------------------------------------------------------
 
@@ -144,6 +214,5 @@ boot =
 
 main :: IO ()
 main = execScreen (mkMBConfig
-        { confCommands = mgCommands
-        , confGMCPSupports = ["MG.char 1", "comm.channel 1", "MG.room 1"]
-        }) (mkMBState (Just triggers) mkMGState) boot
+        { confGMCPSupports = ["MG.char 1", "comm.channel 1", "MG.room 1"]
+        }) (mkMBState (Just triggers) mkMGState cmds) boot

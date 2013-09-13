@@ -7,7 +7,6 @@ module Mudblood.Core
     , MBState (mbLinebuffer, mbUserData), mkMBState
     , MBConfig (..), mkMBConfig
     , LogSeverity (LogDebug, LogInfo, LogWarning, LogError)
-    , MBCommand
     -- * The MBF Functor
     , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI, MBFGetTime)
     -- * MB primitives
@@ -32,6 +31,9 @@ import Control.Monad.Reader
 import Control.Monad.Writer
 import Control.Monad.Free
 
+import qualified Language.DLisp.Core as LC
+import qualified Language.DLisp.Base as L
+
 import qualified Data.Map as M
 
 import Control.Exception
@@ -42,7 +44,6 @@ import Mudblood.UI
 import Mudblood.Telnet
 import Mudblood.Text
 import Mudblood.Trigger
-import Mudblood.Command
 import Mudblood.Mapper.Map
 import Data.GMCP
 
@@ -111,32 +112,33 @@ data MBState = MBState {
     mbTrigger :: Maybe MBTriggerFlow,
     mbUserData :: Dynamic,
     mbMap :: Map,
-    mbWidgets :: [UIWidget MB]
+    mbWidgets :: [UIWidget MB],
+    mbLispContext :: LC.Context MB (L.Value ())
 }
 
 -- | Create a new MBState.
 mkMBState :: (Typeable a) =>
              Maybe MBTriggerFlow                -- ^ Triggers
           -> a                                  -- ^ User data
+          -> [(String, LC.Exp MB (L.Value ()))]
           -> MBState
 
-mkMBState triggers user = MBState {
+mkMBState triggers user funcs = MBState {
     mbLinebuffer = [],
     mbLog = [],
     mbTrigger = triggers,
     mbUserData = toDyn user,
     mbMap = mapEmpty,
-    mbWidgets = []
+    mbWidgets = [],
+    mbLispContext = LC.mkContext funcs
     }
 
 data MBConfig = MBConfig {
-    confCommands :: M.Map String MBCommand,
     confGMCPSupports :: [String]
 }
 
 mkMBConfig = MBConfig
-    { confCommands = M.empty
-    , confGMCPSupports = []
+    { confGMCPSupports = []
     }
 
 data MBF o = forall a. MBFIO (IO a) (a -> o)
@@ -185,23 +187,16 @@ dispatchUI a = liftF $ MBFUI a ()
 
 --------------------------------------------------------------------------------------------------
 
-type MBCommand = Command MB
-
---------------------------------------------------------------------------------------------------
-
 -- | Parse and execute a command
 command :: String -> MB ()
-command c = case parseCommand c of
-    Right (c', args) -> do
-               conf <- ask
-               case M.lookup c' (confCommands conf) of
-                   Just c''    -> do
-                                  res <- runCommand (cmdAction c'') args
-                                  case res of
-                                    Left s -> mbError s
-                                    Right _ -> return ()
-                   Nothing     -> mbError "Invalid command"
-    Left e -> mbError $ "Parse error in '" ++ c ++ "': " ++ e
+command c = do
+    ctx <- gets mbLispContext
+    res <- L.run LC.dummyParser ctx c
+    case res of
+        Right r -> case r of
+                    LC.List [] -> return ()
+                    _          -> echo $ show r
+        Left e  -> mbError e
 
 -- | Run commands from a string
 commands :: String -> MB ()
