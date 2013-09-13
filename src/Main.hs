@@ -3,6 +3,8 @@ import Mudblood.Screen.Gtk
 
 import Data.Array
 import Data.Dynamic
+import Data.List
+import Data.Maybe
 
 import Control.Concurrent hiding (yield)
 import Control.Concurrent.STM
@@ -52,17 +54,19 @@ mgCommands = M.fromList
         map <- lift $ getMap
         dest <- popStringParam
 
-        case findRoomsWith (\x -> getUserValue "tag" (roomUserData x) == dest) map of
+        let map' = mgPrepareMap map
+
+        case findRoomsWith (\x -> getUserValue "tag" (roomUserData x) == dest) map' of
             [] -> fail "Room not found"
             (destroom:_) -> do
                 let walkerFun = const $ return WalkerContinue
                 let weightfun edge = max (1 :: Int) (getUserValue "weight" (exitUserData edge))
 
-                case shortestPath map weightfun (mapCurrentId map) destroom of
+                case shortestPath map' weightfun (mapCurrentId map) destroom of
                     []           -> fail "Path not found"
                     (first:path) -> do
                                     lift $ echo $ "Path is: " ++ show (first:path)
-                                    lift $ modifyTriggers $ fmap (:>>: (walker walkerFun path))
+                                    lift $ modifyTriggers $ fmap (:>>: (walker map' walkerFun path))
                                     lift $ send first
                                     lift $ modifyMap $ mapStep first
         )
@@ -98,7 +102,7 @@ triggers = Permanent gmcpTrigger
       :>>: Permanent reportTrigger
       :>>: guildTriggers
       :>>: colorTriggers
-      :>>: Permanent moveTrigger
+      :>>: Permanent (moveTrigger mgStepper)
 
 tanjianBindings = [ ([KF1],  spell "meditation")
                   , ([KF2],  spell "kokoro")
@@ -124,8 +128,8 @@ boot =
 
     mb $ updateWidgetList
 
-    mb $ connect "mg.mud.de" "4711"
-    --mb $ connect "openfish" "9999"
+    --mb $ connect "mg.mud.de" "4711"
+    mb $ connect "openfish" "9999"
 
     -- Read rc file
     mbpath <- mb $ io $ initUserPath []

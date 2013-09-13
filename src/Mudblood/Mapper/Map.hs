@@ -12,6 +12,8 @@ module Mudblood.Mapper.Map
     , mapEmpty, mapFromString, mapFromFile
     -- * Transforming a map
     , mapStep, mapFly
+    , mapMapGraph
+    , mapSetCurrent
     -- * Querying a map
     , mapCurrentData
     , findNextRoom
@@ -27,8 +29,8 @@ import Text.JSON.Types
 import qualified Data.Map as M
 import Data.List
 
-import Data.Graph.Inductive
-import Data.Graph.Inductive.Tree
+import Data.Graph.Inductive hiding (Gr)
+import Data.Graph.Inductive.PatriciaTree
 
 type MapGraph = Gr RoomData ExitData
 
@@ -58,7 +60,6 @@ data Map = Map
     { mapGraph :: MapGraph
     , mapCurrentId :: Node
     }
-  deriving (Show)
 
 -- | Create an empty map.
 mapEmpty :: Map
@@ -256,6 +257,9 @@ mapStep :: String -> Map -> Map
 mapStep key m = case findNextRoom key m (mapCurrentId m) of
     Nothing -> m
     Just n  -> m { mapCurrentId = n }
+
+mapSetCurrent :: Node -> Map -> Map
+mapSetCurrent n m = m { mapCurrentId = n }
 
 mapFly :: Node -> Map -> Map
 mapFly n m = m { mapCurrentId = n }
