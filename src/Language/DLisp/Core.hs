@@ -1,10 +1,12 @@
+{-# LANGUAGE NoMonomorphismRestriction #-}
+
 module Language.DLisp.Core
     ( Exp (..)
     , Context
     , Result
     , mkContext
-    , run
-    , eval
+    , mergeContext
+    , parse, run, eval
     , throwError
     , typeError
     , getSymbol
@@ -45,6 +47,8 @@ type ErrorStateT m v = ErrorT String (StateT (Context m v) m)
 type Result m v = ErrorStateT m v (Exp m v)
 type FunctionSignature = [String]
 type Context m v = M.Map String (Exp m v)
+
+mergeContext = M.union
 
 instance (Show v) => Show (Exp m v) where
     show (Value v) = show v
@@ -95,7 +99,7 @@ parseSymbol = do
     r <- many (firstAllowed <|> digit)
     return $ Symbol (f:r)
   where
-    firstAllowed = oneOf "+-*/=><!." <|> letter
+    firstAllowed = oneOf "+-*/=><!.$" <|> letter
 
 parseExprAux valp = (try $ parseNil) <|> (try $ parseValue valp) <|> (try $ parseSymbol) <|> (try $ parseList valp)
 
@@ -127,10 +131,8 @@ dummyParser = fail ""
 mkContext :: (Monad m) => [(String, Exp m v)] -> Context m v
 mkContext = M.fromList
 
-run :: (Monad m) => Parser v -> Context m v -> String -> m (Either String (Exp m v))
-run valp ctx src = case parse valp src of
-    Left e  -> return $ Left e
-    Right r -> evalStateT (runErrorT (eval r)) (M.union ctx (mkContext builtins)) >>= return
+run :: (Monad m) => Context m v -> Exp m v -> m (Either String (Exp m v))
+run ctx exp = evalStateT (runErrorT (eval exp)) (M.union ctx (mkContext builtins)) >>= return
 
 -- BUILTINS
 

@@ -10,6 +10,7 @@ module Mudblood.Text
     -- * Conversion to and from strings
     , decode, toAttrString, fromAttrString
     -- * Misc transformations
+    , (<++>)
     , groupAttrString
     , wrap, untab
     -- * Setting attributes
@@ -99,6 +100,9 @@ newtype AttrString = AttrString { getAttrString :: [(Char, Attr)] }
 instance Monoid AttrString where
     mempty = AttrString []
     mappend (AttrString a) (AttrString b) = AttrString (a ++ b)
+
+(<++>) :: AttrString -> AttrString -> AttrString
+(<++>) = mappend
 
 instance Show AttrString where
     show (AttrString s) = map fst s

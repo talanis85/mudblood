@@ -31,8 +31,8 @@ import Control.Monad.Reader
 import Control.Monad.Writer
 import Control.Monad.Free
 
-import qualified Language.DLisp.Core as LC
-import qualified Language.DLisp.Base as L
+import Language.DLisp.Core
+import Mudblood.Language
 
 import qualified Data.Map as M
 
@@ -113,14 +113,15 @@ data MBState = MBState {
     mbUserData :: Dynamic,
     mbMap :: Map,
     mbWidgets :: [UIWidget MB],
-    mbLispContext :: LC.Context MB (L.Value ())
+    mbCoreContext :: Context MB Value,
+    mbTriggerContext :: Context MBTrigger Value
 }
 
 -- | Create a new MBState.
 mkMBState :: (Typeable a) =>
              Maybe MBTriggerFlow                -- ^ Triggers
           -> a                                  -- ^ User data
-          -> [(String, LC.Exp MB (L.Value ()))]
+          -> [(String, Exp MB Value)]
           -> MBState
 
 mkMBState triggers user funcs = MBState {
@@ -130,7 +131,8 @@ mkMBState triggers user funcs = MBState {
     mbUserData = toDyn user,
     mbMap = mapEmpty,
     mbWidgets = [],
-    mbLispContext = LC.mkContext funcs
+    mbCoreContext = mkContext funcs,
+    mbTriggerContext = mkContext []
     }
 
 data MBConfig = MBConfig {
@@ -190,13 +192,17 @@ dispatchUI a = liftF $ MBFUI a ()
 -- | Parse and execute a command
 command :: String -> MB ()
 command c = do
-    ctx <- gets mbLispContext
-    res <- L.run LC.dummyParser ctx c
-    case res of
-        Right r -> case r of
-                    LC.List [] -> return ()
-                    _          -> echo $ show r
-        Left e  -> mbError e
+    ctx <- gets mbCoreContext
+    let exp = parse parseValue c
+    case exp of
+        Left e -> mbError $ "Parsing error: " ++ e
+        Right exp -> do
+            res <- run (mkContext mbBuiltins `mappend` mkContext mbCoreBuiltins `mappend` ctx) exp
+            case res of
+                Right r -> case r of
+                            List [] -> return ()
+                            _         -> echo $ show r
+                Left e  -> mbError e
 
 -- | Run commands from a string
 commands :: String -> MB ()
@@ -356,5 +362,69 @@ instance Functor (MBTriggerF i) where
     fmap f (PutMap d x) = PutMap d $ f x
     fmap f (GetTime g) = GetTime $ f . g
 
-type MBTrigger a = Trigger (MBTriggerF TriggerEvent) TriggerEvent [TriggerEvent] a
+type MBTrigger = Trigger (MBTriggerF TriggerEvent) TriggerEvent [TriggerEvent]
 type MBTriggerFlow = TriggerFlow (MBTriggerF TriggerEvent) TriggerEvent
+
+--------------------------------------------------------------------------------------------------
+
+mbCoreBuiltins :: [(String, Exp MB Value)]
+mbCoreBuiltins =
+    [ ("quit", Function [] $ liftL quit >> return nil)
+    , ("echo", Function ["string"] $ do
+        x <- getSymbol "string"
+        case x of
+            Value (AttrStringValue x) -> liftL $ echoA x
+            Value (StringValue x) -> liftL $ echo x
+            _ -> typeError "string"
+        return nil
+      )
+    , ("connect", Function ["host", "port"] $ do
+        h <- getSymbol "host" >>= typeString
+        p <- getSymbol "port" >>= typeInt
+        liftL $ connect h (show p)
+        return nil
+      )
+    , ("send", Function ["data"] $ do
+        d <- getSymbol "data" >>= typeString
+        liftL $ send d
+        return nil
+      )
+    , ("on-send", Function ["code"] $ do
+        code <- getSymbol "code" >>= typeString
+        case parse parseValue code of
+            Left e -> throwError $ "Parsing error: " ++ e
+            Right exp -> do
+                liftL $ modifyTriggers $ fmap (:>>: (Permanent $ lispSendTrigger exp))
+                return nil
+      )
+    , ("on-line", Function ["code"] $ do
+        code <- getSymbol "code" >>= typeString
+        case parse parseValue code of
+            Left e -> throwError $ "Parsing error: " ++ e
+            Right exp -> do
+                liftL $ modifyTriggers $ fmap (:>>: (Permanent $ lispLineTrigger exp))
+                return nil
+      )
+    ]
+
+lispSendTrigger :: Exp MBTrigger Value -> TriggerEvent -> MBTrigger [TriggerEvent]
+lispSendTrigger exp = guardSend >=> \x -> do
+    res <- run (mkContext mbBuiltins `mappend` ctx x) exp
+    case res of
+        Right (Value (StringValue x)) -> return [SendTEvent x]
+        Right (Value (AttrStringValue x)) -> return [SendTEvent (fromAttrString x)]
+        Left err -> echoErr ("Trigger error: " ++ err) >> return [SendTEvent x]
+        _ -> return []
+  where
+    ctx x = (mkContext [("$", mkStringValue x)])
+
+lispLineTrigger :: Exp MBTrigger Value -> TriggerEvent -> MBTrigger [TriggerEvent]
+lispLineTrigger exp = guardLine >=> \x -> do
+    res <- run (mkContext mbBuiltins `mappend` ctx x) exp
+    case res of
+        Right (Value (StringValue x)) -> return [LineTEvent (toAttrString x)]
+        Right (Value (AttrStringValue x)) -> return [LineTEvent x]
+        Left err -> echoErr ("Trigger error: " ++ err) >> return [LineTEvent x]
+        _ -> return []
+  where
+    ctx x = (mkContext [("$", mkAttrStringValue x)])

@@ -24,6 +24,7 @@ import Control.Trigger
 import Control.Monad
 
 import Data.Dynamic
+import Data.Monoid
 
 import Mudblood.Telnet
 import Mudblood.UI
@@ -92,3 +93,4 @@ returnTime x = return [TimeTEvent x]
 -- | Colorize an AttrString
 colorize :: (Functor f) => Color -> AttrString -> Trigger f i y [TriggerEvent]
 colorize c x = returnLine $ setFg c x
+

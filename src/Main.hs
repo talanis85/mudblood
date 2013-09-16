@@ -10,7 +10,8 @@ import Control.Concurrent hiding (yield)
 import Control.Concurrent.STM
 import Control.Monad hiding (guard)
 
-import Language.DLisp.Base
+import Language.DLisp.Core
+import Mudblood.Language
 
 import qualified Data.Map as M
 
@@ -20,25 +21,9 @@ import Mudblood.Contrib.MG
 
 -- COMMANDS ------------------------------------------------------------
 
+cmds :: [(String, Exp MB Value)]
 cmds =
-    [ ("quit", Function [] $ liftL quit >> return nil)
-    , ("echo", Function ["string"] $ do
-        x <- getSymbol "string" >>= typeString
-        liftL $ echo x
-        return nil
-      )
-    , ("connect", Function ["host", "port"] $ do
-        h <- getSymbol "host" >>= typeString
-        p <- getSymbol "port" >>= typeInt
-        liftL $ connect h (show p)
-        return nil
-      )
-    , ("send", Function ["data"] $ do
-        d <- getSymbol "data" >>= typeString
-        liftL $ send d
-        return nil
-      )
-    , ("addprofile", Function ["name"] $ do
+    [ ("addprofile", Function ["name"] $ do
         name <- getSymbol "name" >>= typeString
         liftL $ addProfile name
         return nil
@@ -48,6 +33,17 @@ cmds =
         liftL $ loadProfile name
         return nil
       )
+    , ("setcolor", Function ["name", "value"] $ do
+        name <- getSymbol "name" >>= typeString
+        value <- getSymbol "value" >>= typeString
+        case name of
+            "bg" -> liftL $ ui $ UISetBgColor value
+            "default" -> liftL $ ui $ UISetColor DefaultColor value
+            _    -> case nameToColor name of
+                        Nothing -> throwError $ "Invalid color: " ++ name
+                        Just c -> liftL $ ui $ UISetColor c value
+        return nil
+        )
     , ("focus", Function ["..."] $ do
         args <- getSymbol "..." >>= typeList
         case args of
@@ -85,79 +81,25 @@ cmds =
         liftL $ modifyMap $ mapFly room
         return nil
       )
-    ]
-{-
-mgCommands = M.fromList
-    [ ("echo", Command ["text"] $ do
-        x <- popStringParam
-        lift $ echoA $ fst $ decode x defaultAttr
-        )
-    , ("quit", Command [] $ do
-        lift quit
-        )
-    , ("connect", Command ["host", "port"] $ do
-        h <- popStringParam
-        p <- popStringParam
-        lift $ connect h p
-        )
-    , ("send", Command ["string"] $ do
-        s <- popStringParam
-        lift $ send s
-        )
-    , ("addprofile", Command ["name"] $ do
-        popStringParam >>= lift . addProfile
-        )
-    , ("profile", Command ["name"] $ do
-        popStringParam >>= lift . loadProfile
-        )
-    , ("focus", Command ["name"] $ popStringParam >>= lift . setFocus)
-    , ("fly", Command ["destination"] $ do
-        map <- lift $ getMap
-        dest <- popStringParam
-
-        case findRoomsWith (\x -> getUserValue "tag" (roomUserData x) == dest) map of
-            [] -> fail "Room not found"
-            (destroom:_) -> lift $ modifyMap $ mapFly destroom
-        )
-    , ("walk", Command ["destination"] $ do
-        map <- lift $ getMap
-        dest <- popStringParam
+    , ("map.walk", Function ["destination"] $ do
+        map <- liftL $ getMap
+        dest <- getSymbol "destination" >>= typeInt
 
         let map' = mgPrepareMap map
 
-        case findRoomsWith (\x -> getUserValue "tag" (roomUserData x) == dest) map' of
-            [] -> fail "Room not found"
-            (destroom:_) -> do
-                let walkerFun = const $ return WalkerContinue
-                let weightfun edge = max (1 :: Int) (getUserValue "weight" (exitUserData edge))
+        let walkerFun = const $ return WalkerContinue
+        let weightfun edge = max (1 :: Int) (getUserValue "weight" (exitUserData edge))
 
-                case shortestPath map' weightfun (mapCurrentId map) destroom of
-                    []           -> fail "Path not found"
-                    (first:path) -> do
-                                    lift $ echo $ "Path is: " ++ show (first:path)
-                                    lift $ modifyTriggers $ fmap (:>>: (walker map' walkerFun path))
-                                    lift $ send first
-                                    lift $ modifyMap $ mapStep first
-        )
-    , ("setcolor", Command ["name", "value"] $ do
-        name <- popStringParam
-        value <- popStringParam
-        case name of
-            "bg" -> lift $ ui $ UISetBgColor value
-            "default" -> lift $ ui $ UISetColor DefaultColor value
-            _    -> case nameToColor name of
-                        Nothing -> fail "Invalid color"
-                        Just c -> lift $ ui $ UISetColor c value
-        )
-    , ("loadmap", Command ["filename"] $ do
-        filename <- popStringParam
-        map <- lift $ io $ mapFromFile filename
-        case map of
-            Just map' -> lift $ putMap map'
-            Nothing -> lift $ echo "Invalid map file"
+        case shortestPath map' weightfun (mapCurrentId map) dest of
+            []           -> throwError "Path not found"
+            (first:path) -> do
+                            liftL $ echo $ "Path is: " ++ show (first:path)
+                            liftL $ modifyTriggers $ fmap (:>>: (walker map' walkerFun path))
+                            liftL $ send first
+                            liftL $ modifyMap $ mapStep first
+        return nil
         )
     ]
--}
 
 -- TRIGGERS -----------------------------------------------------------
 
@@ -206,7 +148,7 @@ boot =
     rcfile <- mb $ io $ readUserFile (mbpath </> "rc")
     case rcfile of
         Nothing -> return ()
-        Just file -> mb $ commands file
+        Just file -> mb $ command file
 
     --mb $ initGMCP
 

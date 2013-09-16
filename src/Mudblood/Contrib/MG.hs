@@ -223,7 +223,7 @@ loadProfile name = do
         Nothing -> mbError "Profil nicht gefunden"
         Just file -> do
                      setU mgProfile name
-                     commands file
+                     command file
                      echo $ "Profil '" ++ name ++ "' geladen."
 
 ------------------------------------------------------------------------------
