@@ -36,6 +36,8 @@ module Mudblood.Contrib.MG
     -- * Mapper
     , mgPrepareMap
     , mgStepper
+    -- * Commands
+    , mgCommands
     ) where
 
 import Control.Monad
@@ -45,7 +47,7 @@ import Data.Foldable
 import Data.Monoid
 import Data.Char
 import Data.Maybe
-import Text.Regex.PCRE
+import Text.Regex.TDFA
 import qualified Data.Map as M
 import qualified Data.Graph.Inductive as G
 
@@ -664,3 +666,54 @@ mgPrepareMap m = mapMapGraph (G.gmap $ mapAddPortals (mapHash m)) m
 mgStepper s m = case findNextRoom s (mgPrepareMap m) (mapCurrentId m) of
                     Nothing -> m
                     Just n -> mapSetCurrent n m
+
+------------------------------------------------------------------------------
+
+mgWalk :: Int -> MB ()
+mgWalk dest = do
+    map <- getMap
+
+    let map' = mgPrepareMap map
+
+    let walkerFun = const $ return WalkerContinue
+    let weightfun edge = max (1 :: Int) (getUserValue "weight" (exitUserData edge))
+
+    case shortestPath map' weightfun (mapCurrentId map) dest of
+        []           -> mbError "Path not found"
+        (first:path) -> do
+                        echo $ "Path is: " ++ show (first:path)
+                        modifyTriggers $ fmap (:>>: (walker map' walkerFun path))
+                        send first
+                        modifyMap $ mapStep first
+
+mgFindRoom :: String -> MB (Maybe Int)
+mgFindRoom name = do
+    map <- getMap
+    case findRoomsWith (\x -> getUserValue "tag" (roomUserData x) == name) map of
+        (x:_) -> return $ Just x
+        [] -> case findRoomsWith (\x -> getUserValue "hash" (roomUserData x) == name) map of
+            (x:_) -> return $ Just x
+            [] -> return Nothing
+
+mgCommands =
+    [ ("focus", Function ["..."] $ do
+        args <- getSymbol "..." >>= typeList
+        case args of
+            [] -> liftL (getU mgFocus) >>= return . mkStringValue . fromMaybe ""
+            (x:[]) -> do
+                f <- typeString x
+                liftL $ setU mgFocus (if f == "" then Nothing else Just f)
+                return $ mkStringValue f
+      )
+    , ("walk", Function ["target"] $ do
+        target <- getSymbol "target"
+        case target of
+            Value (IntValue x)    -> liftL $ mgWalk x
+            Value (StringValue x) -> do
+                r <- liftL $ mgFindRoom x
+                case r of
+                    Nothing -> throwError "Room not found"
+                    Just r -> liftL $ mgWalk r
+        return nil
+      )
+    ]

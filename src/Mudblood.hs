@@ -6,6 +6,7 @@ module Mudblood
     , module Mudblood.UI
     , module Mudblood.Mapper
     , module Mudblood.Paths
+    , module Mudblood.Language
     ) where
 
 import Mudblood.Core
@@ -15,3 +16,4 @@ import Mudblood.Keys
 import Mudblood.UI
 import Mudblood.Mapper
 import Mudblood.Paths
+import Mudblood.Language

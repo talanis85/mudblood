@@ -27,7 +27,7 @@ import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language (haskellDef)
 
-import Text.Regex.PCRE
+import Text.Regex.TDFA
 
 data Style = StyleNormal | StyleBold | StyleUnderline
     deriving (Show, Eq)

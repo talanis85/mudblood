@@ -8,12 +8,15 @@ module Mudblood.Language
     , typeAttrString
     , parseValue
     , mbBuiltins
+    -- re-exports
+    , typeList, typeError, throwError, getSymbol, Exp (..), nil, liftL
     ) where
 
 import Text.ParserCombinators.Parsec
 import Language.DLisp.Core
 import Mudblood.Text
 import Data.Monoid
+import Control.Monad
 import qualified Data.Map as M
 
 data Value = BoolValue Bool
@@ -143,6 +146,7 @@ mbBuiltins =
     , ("not", dlispStdUnary valueNeg)
     , ("set-fg", dlispAttrStringColor setFg)
     , ("set-bg", dlispAttrStringColor setBg)
+    , ("repeat", dlispRepeat)
     ]
 
 dlispIf :: (Monad m) => Exp m Value
@@ -174,6 +178,13 @@ dlispAttrStringColor f = Function ["color", "string"] $ do
             case nameToColor arg1 of
                 Nothing -> throwError "Invalid color"
                 Just c  -> return $ mkAttrStringValue $ f c arg2
+
+dlispRepeat :: (Monad m) => Exp m Value
+dlispRepeat = Special ["count", "arg"] $ do
+    count <- getSymbol "count" >>= typeInt
+    action <- getSymbol "arg"
+    forM_ [1..count] $ \_ -> eval action
+    return nil
 
 parseValue = do
     v <- parseStdValue

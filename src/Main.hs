@@ -44,15 +44,6 @@ cmds =
                         Just c -> liftL $ ui $ UISetColor c value
         return nil
         )
-    , ("focus", Function ["..."] $ do
-        args <- getSymbol "..." >>= typeList
-        case args of
-            [] -> liftL (getU mgFocus) >>= return . mkStringValue . fromMaybe ""
-            (x:[]) -> do
-                f <- typeString x
-                liftL $ setU mgFocus (if f == "" then Nothing else Just f)
-                return $ mkStringValue f
-      )
     , ("map.findTag", Function ["tag"] $ do
         tag <- getSymbol "tag" >>= typeString
         map <- liftL $ getMap
@@ -116,6 +107,7 @@ triggers = Permanent gmcpTrigger
       :>>: colorTriggers
       :>>: Permanent (moveTrigger mgStepper)
 
+{-
 tanjianBindings = [ ([KF1],  spell "meditation")
                   , ([KF2],  spell "kokoro")
                   , ([KF3],  spell "kami %f")
@@ -129,6 +121,7 @@ tanjianBindings = [ ([KF1],  spell "meditation")
                   , ([KF11], spell "samusa %f")
                   , ([KF12], spell "kshira %f")
                   ]
+                  -}
 
 boot :: Screen ()
 boot =
@@ -136,7 +129,7 @@ boot =
     bind [KEsc, KBS, KAscii '!', KAscii 'q'] $ mb quit
     bind [KEsc, KBS, KAscii '!', KAscii 'x', KEsc, KBS, KAscii 'q'] $ mb quit
     
-    mapM_ (\(a,b) -> bind a (mb b)) tanjianBindings
+    --mapM_ (\(a,b) -> bind a (mb b)) tanjianBindings
 
     mb $ updateWidgetList
 
@@ -157,4 +150,4 @@ boot =
 main :: IO ()
 main = execScreen (mkMBConfig
         { confGMCPSupports = ["MG.char 1", "comm.channel 1", "MG.room 1"]
-        }) (mkMBState (Just triggers) mkMGState cmds) boot
+        }) (mkMBState (Just triggers) mkMGState (cmds ++ mgCommands)) boot

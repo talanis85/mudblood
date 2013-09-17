@@ -268,6 +268,7 @@ updatePrompt = do
 
 execUIAction :: UIAction MB -> Screen ()
 execUIAction action = case action of
+    UIBind keystring action -> bind keystring (mb $ action)
     UIStatus str -> askControls >>= (\l -> liftIO $ G.labelSetText l str) . ctlStatusUser
     UIUpdateMap map -> do
         ctls <- askControls

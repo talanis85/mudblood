@@ -14,6 +14,7 @@ module Language.DLisp.Core
     , nil
     , liftL
     , typeList
+    , typeFunction
     ) where
 
 import qualified Data.Map as M
@@ -60,7 +61,7 @@ instance (Show v) => Show (Exp m v) where
 
 -- EVALUATION
 
-eval :: (Monad m) => Exp m v -> Result m v
+eval :: (Monad m, Show v) => Exp m v -> Result m v
 eval (Value v)          = return $ Value v
 eval (Function args f)  = return $ Function args f
 eval (Special args f)   = return $ Special args f
@@ -72,7 +73,7 @@ eval (List (x:xs))      = eval x >>= apply
     where
         apply (Special exArgs f)    = apply' exArgs xs f
         apply (Function exArgs f)   = mapM eval xs >>= \args -> apply' exArgs args f
-        apply _                     = throwError "Function expected"
+        apply x                     = throwError $ "Function expected. Got '" ++ (show x) ++ "' instead"
 
         apply' exArgs args f = do
             oldctx <- get
@@ -109,7 +110,7 @@ parseList valp = do
     char '('
     skipMany space
     x <- (parseExprAux valp) `sepEndBy` (many1 space)
-    char ')'
+    (char ')' >> return ()) <|> eof
     return $ List x
 
 parseExpr valp = do
@@ -131,16 +132,17 @@ dummyParser = fail ""
 mkContext :: (Monad m) => [(String, Exp m v)] -> Context m v
 mkContext = M.fromList
 
-run :: (Monad m) => Context m v -> Exp m v -> m (Either String (Exp m v))
+run :: (Monad m, Show v) => Context m v -> Exp m v -> m (Either String (Exp m v))
 run ctx exp = evalStateT (runErrorT (eval exp)) (M.union ctx (mkContext builtins)) >>= return
 
 -- BUILTINS
 
-builtins :: (Monad m) => [(String, Exp m v)]
+builtins :: (Monad m, Show v) => [(String, Exp m v)]
 builtins =
     [ ("list", Function ["..."] dlispList)
     , ("fn", Special ["args", "..."] dlispFn)
     , ("begin", Special ["..."] dlispBegin)
+    , ("for", Function ["list", "fun"] dlispFor)
     ]
 
 -- Helper
@@ -168,12 +170,12 @@ typeValue x = case x of
 
 typeError t = throwError $ "Type error: Expected " ++ t
 
-dlispList :: (Monad m) => Result m v
+dlispList :: (Monad m, Show v) => Result m v
 dlispList = do
     l <- getSymbol "..." >>= typeList
     return $ List l
 
-dlispFn :: (Monad m) => Result m v
+dlispFn :: (Monad m, Show v) => Result m v
 dlispFn = do
     args <- getSymbol "args" >>= typeList
     body <- getSymbol "..." >>= typeList
@@ -182,13 +184,30 @@ dlispFn = do
     args' <- mapM typeSymbol args
     return $ Function args' newFn
 
-dlispBegin :: (Monad m) => Result m v
+dlispBegin :: (Monad m, Show v) => Result m v
 dlispBegin = do
     steps <- getSymbol "..." >>= typeList
     res <- mapM eval steps
     case res of
         [] -> return $ List []
         l  -> return $ last l
+
+dlispFor :: (Monad m, Show v) => Result m v
+dlispFor = do
+    list <- getSymbol "list" >>= typeList
+    fun <- getSymbol "fun"
+    ret <- forM list $ \x -> eval (List [fun, x])
+    return $ List ret
+
+{-
+dlispLet :: (Monad m, Show v) => Result m v
+dlispLet = do
+    bindings <- getSymbol "bindings" >>= typeList
+    fun <- getSymbol "fun"
+    case tryfun of
+        List [] -> return nil
+        x -> eval (List [fun, x])
+        -}
 
 -- Convenience functions
 

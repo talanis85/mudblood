@@ -11,6 +11,7 @@ module Mudblood.Core
     , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI, MBFGetTime)
     -- * MB primitives
     , command, commands, quit, logger, process, processSend, processTelnet, processTime, mbError
+    , addCommand
     , connect, modifyTriggers
     , initGMCP
     , MBMonad (echo, echoA, echoErr, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap, getTime)
@@ -45,6 +46,7 @@ import Mudblood.Telnet
 import Mudblood.Text
 import Mudblood.Trigger
 import Mudblood.Mapper.Map
+import Mudblood.Keys
 import Data.GMCP
 
 import Debug.Trace
@@ -207,6 +209,8 @@ command c = do
 -- | Run commands from a string
 commands :: String -> MB ()
 commands s = forM_ (filter (/= "") (lines s)) command
+
+addCommand name fun = modify $ \s -> s { mbCoreContext = M.insert name fun (mbCoreContext s) }
 
 -- | Quit mudblood
 quit :: MB ()
@@ -387,6 +391,28 @@ mbCoreBuiltins =
     , ("send", Function ["data"] $ do
         d <- getSymbol "data" >>= typeString
         liftL $ send d
+        return nil
+      )
+    , ("cmd", Function ["name", "fun"] $ do
+        name <- getSymbol "name" >>= typeString
+        fun <- getSymbol "fun"
+        liftL $ addCommand name fun
+        return nil
+      )
+    , ("bind", Function ["keystring", "code"] $ do
+        keystring <- getSymbol "keystring" >>= typeString
+        code <- getSymbol "code" >>= typeString
+        case parse parseValue code of
+            Left e -> throwError $ "Parsing error: " ++ e
+            Right exp -> case parseKeys keystring of
+                Nothing -> throwError $ "Invalid keystring"
+                Just ks -> liftL $ ui $ UIBind ks $ do
+                    ctx <- gets mbCoreContext
+                    ret <- run (mkContext mbCoreBuiltins `mappend` mkContext mbBuiltins `mappend` ctx) exp
+                    case ret of
+                        Left e -> mbError $ "Error in binding for " ++ (show ks) ++ ": " ++ e
+                        Right r -> return ()
+                    return ()
         return nil
       )
     , ("on-send", Function ["code"] $ do

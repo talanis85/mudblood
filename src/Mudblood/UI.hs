@@ -5,6 +5,7 @@ module Mudblood.UI
     , UIWidget (..)
     ) where
 
+import Mudblood.Keys
 import Mudblood.Text
 import Mudblood.Mapper.Map
 
@@ -23,6 +24,7 @@ data UIAction m = UIStatus String
                 | UIUpdateWidgets [UIWidget m]
                 | UISetColor Color String
                 | UISetBgColor String
+                | UIBind [Key] (m ())
 
 -- | Widgets are small pieces of information to be displayed by the screen.
 data UIWidget m = UIWidgetText (m String)        -- ^ A singe line of text
