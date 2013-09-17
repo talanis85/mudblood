@@ -20,6 +20,7 @@ instance Show UIValue where
 
 data UIAction m = UIStatus String
                 | UIUpdateMap Map
+                | UIShowSidebar Bool
                 | UISetValue String UIValue
                 | UIUpdateWidgets [UIWidget m]
                 | UISetColor Color String

@@ -415,6 +415,11 @@ mbCoreBuiltins =
                     return ()
         return nil
       )
+    , ("sidebar", Function ["state"] $ do
+        state <- getSymbol "state" >>= typeBool
+        liftL $ ui $ UIShowSidebar state
+        return nil
+      )
     , ("on-send", Function ["code"] $ do
         code <- getSymbol "code" >>= typeString
         case parse parseValue code of

@@ -105,6 +105,7 @@ data ScreenControls = ScreenControls
     , ctlStatusSystem   :: G.Label
     , ctlWidgetArea     :: G.DrawingArea
     , ctlMapArea        :: G.DrawingArea
+    , ctlSidebar        :: G.VBox
     }
 
 newtype Screen a = Screen (ReaderT (IORef ScreenState, ScreenControls) IO a)
@@ -270,6 +271,7 @@ execUIAction :: UIAction MB -> Screen ()
 execUIAction action = case action of
     UIBind keystring action -> bind keystring (mb $ action)
     UIStatus str -> askControls >>= (\l -> liftIO $ G.labelSetText l str) . ctlStatusUser
+    UIShowSidebar state -> askControls >>= liftIO . (if state then G.widgetShow else G.widgetHide) . ctlSidebar
     UIUpdateMap map -> do
         ctls <- askControls
         liftIO $ G.labelSetText (ctlStatusSystem ctls) $
@@ -353,6 +355,7 @@ initUI path stref = do
     statusSystem    <- GB.builderGetObject builder G.castToLabel        "statusSystem"
     widgetArea      <- GB.builderGetObject builder G.castToDrawingArea  "widgetArea"
     mapArea         <- GB.builderGetObject builder G.castToDrawingArea  "mapArea"
+    sidebar         <- GB.builderGetObject builder G.castToVBox         "sidebar"
 
     let controls = ScreenControls
             { ctlMainView       = mainView
@@ -364,6 +367,7 @@ initUI path stref = do
             , ctlStatusSystem   = statusSystem
             , ctlWidgetArea     = widgetArea
             , ctlMapArea        = mapArea
+            , ctlSidebar        = sidebar
             }
 
     monoFont <- P.fontDescriptionFromString "monospace"
