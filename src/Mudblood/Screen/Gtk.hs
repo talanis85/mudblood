@@ -55,7 +55,7 @@ data SocketEvent = DataEvent String
 
 ------------------------------------------------------------------------------
 
-data ScreenState = ScreenState {
+data ScreenState u = ScreenState {
     scrPrompt :: String,
     scrMarkedPrompt :: String,
 
@@ -63,11 +63,11 @@ data ScreenState = ScreenState {
     scrCommandBuffer :: String,
     scrNormalKeybuffer :: [Key],
 
-    scrWidgets :: [UIWidget MB],
+    scrWidgets :: MB u [UIWidget],
 
-    scrBindings :: Trie.Trie Key (Screen ()),
+    scrBindings :: Trie.Trie Key (Screen u ()),
 
-    scrMBState :: MBState,
+    scrMBState :: MBState u,
     scrMBConfig :: MBConfig,
 
     scrSocket :: Maybe TelnetSocket,
@@ -79,7 +79,7 @@ data ScreenState = ScreenState {
     scrQuit :: Bool
     }
 
-mkScreenState conf initMBState = ScreenState {
+mkScreenState conf initMBState widgets = ScreenState {
     scrPrompt = "",
     scrMarkedPrompt = "",
     scrNormalBuffer = "",
@@ -92,7 +92,7 @@ mkScreenState conf initMBState = ScreenState {
     scrSocket = Nothing,
     scrQuit = False,
     scrTime = 0,
-    scrWidgets = []
+    scrWidgets = widgets
 }
 
 data ScreenControls = ScreenControls
@@ -108,21 +108,21 @@ data ScreenControls = ScreenControls
     , ctlSidebar        :: G.VBox
     }
 
-newtype Screen a = Screen (ReaderT (IORef ScreenState, ScreenControls) IO a)
-    deriving (Monad, MonadIO, MonadReader (IORef ScreenState, ScreenControls))
+newtype Screen u a = Screen (ReaderT (IORef (ScreenState u), ScreenControls) IO a)
+    deriving (Monad, MonadIO, MonadReader (IORef (ScreenState u), ScreenControls))
 
-instance MonadState ScreenState Screen where
+instance MonadState (ScreenState u) (Screen u) where
     get   = Screen (ask >>= liftIO . readIORef . fst)
     put s = Screen (ask >>= liftIO . flip writeIORef s . fst)
 
-askControls :: Screen ScreenControls
+askControls :: Screen u ScreenControls
 askControls = ask >>= return . snd
 
 runScreen ctrls stref (Screen s) = runReaderT s (stref, ctrls)
 
 ------------------------------------------------------------------------------
 
-mb :: MB a -> Screen a
+mb :: MB u a -> Screen u a
 mb mb = do
     st <- get
     (a, s) <- interpMB $ runMB (scrMBConfig st) (scrMBState st) mb
@@ -141,7 +141,7 @@ mb mb = do
 ------------------------------------------------------------------------------
 
 -- | Open a connection
-connectScreen :: String -> String -> Screen ()
+connectScreen :: String -> String -> Screen u ()
 connectScreen host port =
     do
     state <- get
@@ -163,7 +163,7 @@ connectScreen host port =
                               in G.postGUIAsync $ runReaderT s st
 
 -- | Handle a SocketEvent
-telnetReceive :: SocketEvent -> Screen ()
+telnetReceive :: SocketEvent -> Screen u ()
 telnetReceive ev = do
     st <- get
     case ev of
@@ -177,7 +177,7 @@ telnetReceive ev = do
     updateWidgets
 
 -- | Send a byte array to the socket (if existent)
-sendSocket :: Communication -> Screen ()
+sendSocket :: Communication -> Screen u ()
 sendSocket dat =
     do
     state <- get
@@ -186,11 +186,11 @@ sendSocket dat =
          Nothing -> appendToMainBuffer (toAttrString "No socket")
 
 -- | The screen main loop
-screen :: Screen ()
+screen :: Screen u ()
 screen = liftIO G.mainGUI
 
 -- | Append a line to the main line buffer
-appendToMainBuffer :: AttrString -> Screen ()
+appendToMainBuffer :: AttrString -> Screen u ()
 appendToMainBuffer astr = do
     ctrls <- askControls
     let mainbuf = ctlMainBuffer ctrls
@@ -215,7 +215,7 @@ appendToMainBuffer astr = do
     scrollToEnd
 
   where
-    appendChunk :: (String, Attr) -> Screen ()
+    appendChunk :: (String, Attr) -> Screen u ()
     appendChunk (s, a) = do
       ctrls <- askControls
       let mainbuf = (ctlMainBuffer ctrls)
@@ -229,7 +229,7 @@ appendToMainBuffer astr = do
                       G.textBufferApplyTagByName mainbuf (tagNameForAttr a) startIter' endIter'
                       return ()
 
-scrollToEnd :: Screen ()
+scrollToEnd :: Screen u ()
 scrollToEnd = do
     ctrls <- askControls
     let mainbuf = ctlMainBuffer ctrls
@@ -244,7 +244,7 @@ scrollToEnd = do
                 return mark
     liftIO $ G.textViewScrollMarkOnscreen (ctlMainView ctrls) endMark
 
-updatePrompt :: Screen ()
+updatePrompt :: Screen u ()
 updatePrompt = do
     ctrls <- askControls
     let mainbuf = ctlMainBuffer ctrls
@@ -267,7 +267,7 @@ updatePrompt = do
 
     scrollToEnd
 
-execUIAction :: UIAction MB -> Screen ()
+execUIAction :: UIAction (MB u) -> Screen u ()
 execUIAction action = case action of
     UIBind keystring action -> bind keystring (mb $ action)
     UIStatus str -> askControls >>= (\l -> liftIO $ G.labelSetText l str) . ctlStatusUser
@@ -276,7 +276,7 @@ execUIAction action = case action of
         ctls <- askControls
         liftIO $ G.labelSetText (ctlStatusSystem ctls) $
             printf "Room: %d" (mapCurrentId map)
-    UIUpdateWidgets w -> modify $ \s -> s { scrWidgets = w }
+    --UIUpdateWidgets w -> modify $ \s -> s { scrWidgets = w }
     UISetBgColor val -> do
         ctls <- askControls
         case parseColour val of
@@ -340,7 +340,7 @@ mapKey chr name = case name of
 
     _           -> fmap KAscii chr
 
-initUI :: String -> IORef ScreenState -> IO ScreenControls
+initUI :: String -> IORef (ScreenState u) -> IO ScreenControls
 initUI path stref = do
     builder <- GB.builderNew
     GB.builderAddFromFile builder path
@@ -439,24 +439,24 @@ initUI path stref = do
 
     return controls
 
-runTimer :: ScreenControls -> IORef ScreenState -> IO ()
+runTimer :: ScreenControls -> IORef (ScreenState u) -> IO ()
 runTimer ctrls stref = forever $ do
     t <- getPOSIXTime
     G.postGUIAsync $ runScreen ctrls stref $ updateTimer (floor $ toRational t)
     threadDelay 1000000
 
-updateTimer :: Int -> Screen ()
+updateTimer :: Int -> Screen u ()
 updateTimer n = do
     modify $ \s -> s { scrTime = n }
     mb $ processTime n
     updateWidgets
 
 -- | Run the screen
-execScreen :: MBConfig -> MBState -> Screen () -> IO ()
-execScreen conf initMBState action =
+execScreen :: MBConfig -> (MBState u) -> MB u [UIWidget] -> Screen u () -> IO ()
+execScreen conf initMBState widgets action =
     do
     G.initGUI
-    stref <- newIORef $ mkScreenState conf initMBState
+    stref <- newIORef $ mkScreenState conf initMBState widgets
     --gladepath <- getDataFileName "gui.glade"
     --ctrls <- initUI gladepath stref
     ctrls <- initUI "gui.glade" stref
@@ -469,7 +469,7 @@ execScreen conf initMBState action =
 
 ------------------------------------------------------------------------------
 
-handleKey :: Key -> Screen Bool
+handleKey :: Key -> Screen u Bool
 handleKey key = do
     wasBinding <- handleKeybinding key
     ctrls <- askControls
@@ -491,7 +491,7 @@ handleKey key = do
                                      return True
                            _ -> return False
 
-handleKeybinding :: Key -> Screen Bool
+handleKeybinding :: Key -> Screen u Bool
 handleKeybinding k = do
     st <- get
     let kb = (scrNormalKeybuffer st) ++ [k]
@@ -503,7 +503,7 @@ handleKeybinding k = do
              return True
         else modify (\s -> s { scrNormalKeybuffer = [] }) >> return False
 
-bind :: [Key] -> Screen () -> Screen ()
+bind :: [Key] -> Screen u () -> Screen u ()
 bind keys ac = modify $ \s -> s { scrBindings = Trie.insert (scrBindings s) keys ac }
 
 ------------------------------------------------------------------------------
@@ -531,7 +531,7 @@ getViewSize = do
     -}
 
 -- | Handle telnet negotiations
-handleTelneg :: TelnetNeg -> Screen ()
+handleTelneg :: TelnetNeg -> Screen u ()
 handleTelneg neg = case neg of
     -- WILL EOR
     TelnetNeg (Just CMD_WILL) (Just OPT_EOR) [] ->
@@ -553,21 +553,21 @@ handleTelneg neg = case neg of
 
 ------------------------------------------------------------------------------
 
-updateWidgets :: Screen ()
+updateWidgets :: Screen u ()
 updateWidgets = do
     ctls <- askControls
     liftIO $ G.widgetQueueDraw (ctlWidgetArea ctls)
 
-drawWidgets :: G.DrawWindow -> Screen ()
+drawWidgets :: G.DrawWindow -> Screen u ()
 drawWidgets win = do
-    widgets <- gets scrWidgets
+    widgets <- gets scrWidgets >>= mb
     ctls <- askControls
     style <- liftIO $ G.rcGetStyle (ctlWidgetArea ctls)
 
     actions <- forM widgets $ \w -> do
         case w of
-            UIWidgetText poll -> mb poll >>= return . (renderTextWidget style)
-            UIWidgetTable poll -> mb poll >>= return . (renderTableWidget style)
+            UIWidgetText str -> return (renderTextWidget style str)
+            UIWidgetTable tab -> return (renderTableWidget style tab)
 
     liftIO $ G.renderWithDrawable win $ do
         C.translate 8.0 14.0
@@ -615,5 +615,5 @@ renderTableWidget style tab = do
     rectify elem len mat = map (fill elem len) mat
     fill elem len l = l ++ (take (max 0 (len - length l)) $ repeat elem)
 
-drawMap :: G.DrawWindow -> Screen ()
+drawMap :: G.DrawWindow -> Screen u ()
 drawMap win = return ()

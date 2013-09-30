@@ -1,4 +1,5 @@
-{-# LANGUAGE ExistentialQuantification, GeneralizedNewtypeDeriving, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE ExistentialQuantification, GeneralizedNewtypeDeriving, TypeSynonymInstances, FlexibleInstances, FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies #-}
 
 module Mudblood.Core
     ( 
@@ -13,16 +14,15 @@ module Mudblood.Core
     , command, commands, quit, logger, process, processSend, processTelnet, processTime, mbError
     , addCommand
     , connect, modifyTriggers
-    , initGMCP
+    , gmcpHello
     , MBMonad (echo, echoA, echoErr, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap, getTime)
     -- * Triggers
-    , MBTriggerF (..)
-    , MBTrigger, MBTriggerFlow
+    , MBTrigger, MBTriggerM, MBTriggerFlow
     ) where
 
 import Data.Word
 import Data.List.Split
-import Data.Dynamic
+--import Data.Dynamic
 
 import Control.Applicative
 import Control.Monad
@@ -51,6 +51,9 @@ import Data.GMCP
 
 import Debug.Trace
 
+import Paths_mudblood
+import Data.Version
+
 data LogSeverity = LogDebug
                  | LogInfo
                  | LogWarning
@@ -59,8 +62,7 @@ data LogSeverity = LogDebug
 
 --------------------------------------------------------------------------------------------------
 
--- | Type class that contains common functions of triggers and MB actions.
-class (Monad m) => MBMonad m where
+class (Monad m) => MBMonad m u | m -> u where
     echoA :: AttrString -> m ()
 
     echo :: String -> m ()
@@ -71,68 +73,75 @@ class (Monad m) => MBMonad m where
 
     send :: (Sendable a) => a -> m ()
 
-    ui :: UIAction MB -> m ()
+    ui :: UIAction (MB u) -> m ()
 
     io :: IO a -> m a
 
-    getUserDataDynamic :: m Dynamic
+    getUserData :: m u
 
-    modifyUserDataDynamic :: (Dynamic -> Dynamic) -> m ()
-    modifyUserDataDynamic f = getUserDataDynamic >>= putUserDataDynamic . f
+    putUserData :: u -> m ()
+    putUserData x = modifyUserData $ const x
 
-    putUserDataDynamic :: Dynamic -> m ()
-    putUserDataDynamic d = modifyUserDataDynamic (\_ -> d)
-
-    getUserData :: (Typeable a) => m a
-    getUserData = do
-        ud <- getUserDataDynamic
-        case fromDynamic ud of
-            Just ud' -> return ud'
-            Nothing  -> fail "THIS IS A BUG: User data corrupted."
-
-    putUserData :: (Typeable a) => a -> m ()
-    putUserData d = putUserDataDynamic (toDyn d)
-
-    modifyUserData :: (Typeable a) => (a -> a) -> m ()
+    modifyUserData :: (u -> u) -> m ()
     modifyUserData f = getUserData >>= putUserData . f
 
     getMap :: m Map
 
     putMap :: Map -> m ()
-    putMap d = modifyMap (\_ -> d)
+    putMap m = modifyMap $ const m
 
     modifyMap :: (Map -> Map) -> m ()
     modifyMap f = getMap >>= putMap . f
 
     getTime :: m Int
 
+instance MBMonad (MB u) u where
+    echoA x = liftF $ MBFLine x ()
+    send x = liftF $ MBFSend (Communication x) ()
+    ui action = liftF $ MBFUI action ()
+    io action = liftF $ MBFIO action id
+    getUserData = gets mbUserData
+    modifyUserData f = modify $ \s -> s { mbUserData = f (mbUserData s) }
+    getMap = gets mbMap
+    putMap d = do modify $ \s -> s { mbMap = d }
+                  liftF $ MBFUI (UIUpdateMap d) ()
+    getTime = liftF $ MBFGetTime id
+
+instance MBMonad (TriggerM (MB u) y r) u where
+    echoA = liftT . echoA
+    send = liftT . send
+    ui = liftT . ui
+    io = liftT . io
+    getUserData = liftT getUserData
+    modifyUserData = liftT . modifyUserData
+    getMap = liftT getMap
+    putMap = liftT . putMap
+    getTime = liftT getTime
+
 --------------------------------------------------------------------------------------------------
 
-data MBState = MBState {
+data MBState u = MBState {
     mbLinebuffer :: [AttrString],
     mbLog :: [String],
-    mbTrigger :: Maybe MBTriggerFlow,
-    mbUserData :: Dynamic,
+    mbTrigger :: Maybe (MBTriggerFlow u),
+    mbUserData :: u,
     mbMap :: Map,
-    mbWidgets :: [UIWidget MB],
-    mbCoreContext :: Context MB Value,
-    mbTriggerContext :: Context MBTrigger Value
+    mbCoreContext :: Context (MB u) Value,
+    mbTriggerContext :: Context (MBTriggerM u) Value
 }
 
 -- | Create a new MBState.
-mkMBState :: (Typeable a) =>
-             Maybe MBTriggerFlow                -- ^ Triggers
-          -> a                                  -- ^ User data
-          -> [(String, Exp MB Value)]
-          -> MBState
+mkMBState :: Maybe (MBTriggerFlow u)            -- ^ Triggers
+          -> u                                  -- ^ User data
+          -> [(String, Exp (MB u) Value)]
+          -> MBState u
 
 mkMBState triggers user funcs = MBState {
     mbLinebuffer = [],
     mbLog = [],
     mbTrigger = triggers,
-    mbUserData = toDyn user,
+    mbUserData = user,
     mbMap = mapEmpty,
-    mbWidgets = [],
     mbCoreContext = mkContext funcs,
     mbTriggerContext = mkContext []
     }
@@ -145,15 +154,15 @@ mkMBConfig = MBConfig
     { confGMCPSupports = []
     }
 
-data MBF o = forall a. MBFIO (IO a) (a -> o)
-           | MBFLine AttrString o
-           | MBFSend Communication o
-           | MBFConnect String String o
-           | MBFQuit o
-           | MBFUI (UIAction MB) o
-           | MBFGetTime (Int -> o)
+data MBF u o = forall a. MBFIO (IO a) (a -> o)
+             | MBFLine AttrString o
+             | MBFSend Communication o
+             | MBFConnect String String o
+             | MBFQuit o
+             | MBFUI (UIAction (MB u)) o
+             | MBFGetTime (Int -> o)
 
-instance Functor MBF where
+instance Functor (MBF u) where
     fmap f (MBFIO action g) = MBFIO action $ f . g
     fmap f (MBFUI action x) = MBFUI action $ f x
     fmap f (MBFLine l x) = MBFLine l $ f x
@@ -164,35 +173,17 @@ instance Functor MBF where
 
 --------------------------------------------------------------------------------------------------
 
-newtype MB a = MB (ReaderT MBConfig (StateT MBState (Free MBF)) a)
-    deriving (Monad, MonadState MBState, MonadReader MBConfig, MonadFree MBF, Functor, Applicative)
+newtype MB u a = MB (ReaderT MBConfig (StateT (MBState u) (Free (MBF u))) a)
+    deriving (Monad, MonadState (MBState u), MonadReader MBConfig, MonadFree (MBF u), Functor, Applicative)
 
 -- | Run the MB monad.
-runMB :: MBConfig -> MBState -> MB a -> Free MBF (a, MBState)
+runMB :: MBConfig -> MBState u -> MB u a -> Free (MBF u) (a, MBState u)
 runMB conf st (MB mb) = runStateT (runReaderT mb conf) st
-
-dispatchIO :: IO a -> MB a
-dispatchIO action = liftF $ MBFIO action id
-
-dispatchLine :: AttrString -> MB ()
-dispatchLine x = liftF $ MBFLine x ()
-
-dispatchSend :: Communication -> MB ()
-dispatchSend x = liftF $ MBFSend x ()
-
-dispatchConnect :: String -> String -> MB ()
-dispatchConnect h p = liftF $ MBFConnect h p ()
-
-dispatchQuit :: MB ()
-dispatchQuit = liftF $ MBFQuit ()
-
-dispatchUI :: UIAction MB -> MB ()
-dispatchUI a = liftF $ MBFUI a ()
 
 --------------------------------------------------------------------------------------------------
 
 -- | Parse and execute a command
-command :: String -> MB ()
+command :: String -> MB u ()
 command c = do
     ctx <- gets mbCoreContext
     let exp = parse parseValue c
@@ -203,26 +194,26 @@ command c = do
             case res of
                 Right r -> case r of
                             List [] -> return ()
-                            _         -> echo $ show r
+                            _       -> echo $ show r
                 Left e  -> mbError e
 
 -- | Run commands from a string
-commands :: String -> MB ()
+commands :: String -> MB u ()
 commands s = forM_ (filter (/= "") (lines s)) command
 
 addCommand name fun = modify $ \s -> s { mbCoreContext = M.insert name fun (mbCoreContext s) }
 
 -- | Quit mudblood
-quit :: MB ()
-quit = dispatchQuit
+quit :: MB u ()
+quit = liftF $ MBFQuit ()
 
 -- | General logging function
-logger :: LogSeverity -> String -> MB ()
+logger :: LogSeverity -> String -> MB u ()
 logger sev str = modify $ \s -> s { mbLog = ((show sev) ++ str):(mbLog s) }
 
 -- | Process a chunk of incoming data, i.e. pass the trigger chain and add the
 --   result to the main linebugger.
-process :: String -> String -> Attr -> MB (String, Attr)
+process :: String -> String -> Attr -> MB u (String, Attr)
 process pr str a =
     case lines' str of
         (l:[])      -> return (pr ++ l, a)
@@ -235,143 +226,73 @@ process pr str a =
     decodeFold cur (l, a) = let (line, attr) = decode cur a
                             in (line:l, attr)
 
-processSend :: String -> MB ()
+processSend :: String -> MB u ()
 processSend str = do
     trigger $ SendTEvent str
 
-initGMCP :: MB ()
-initGMCP = do
-    send $ TelnetNeg (Just CMD_DO) (Just OPT_GMCP) []        
-    send $ GMCP "Core.Hello" $
+gmcpHello :: [String] -> [Communication]
+gmcpHello supports =
+    [ Communication $ TelnetNeg (Just CMD_DO) (Just OPT_GMCP) []
+    , Communication $ GMCP "Core.Hello" $
         JSObject $ toJSObject [ ("client", JSString $ toJSString "mudblood"),
-                                ("version", JSString $ toJSString "0.1")
+                                ("version", JSString $ toJSString (showVersion version))
                               ]
-    send $ GMCP "Core.Supports.Set" $
-        JSArray $ [ JSString $ toJSString "MG.char 1"
-                  , JSString $ toJSString "comm.channel 1"
-                  , JSString $ toJSString "MG.room 1"
-                  ]
+    , Communication $ GMCP "Core.Supports.Set" $ JSArray $ map (JSString . toJSString) supports
+    ]
 
-processTelnet :: TelnetNeg -> MB ()
+processTelnet :: TelnetNeg -> MB u ()
 processTelnet neg = case neg of
     -- GMCP
-    TelnetNeg (Just CMD_WILL) (Just OPT_GMCP) _ -> initGMCP
     TelnetNeg (Just CMD_SB) (Just OPT_GMCP) dat ->
         case parseGMCP $ UTF8.decode dat of
             Nothing -> mbError "Received invalid GMCP"
             Just gmcp -> trigger $ GMCPTEvent gmcp
-    -- Else: output telneg
-    x -> echoA (setFg Magenta (toAttrString $ show x))
+    -- Else: trigger it
+    _ -> trigger $ TelnetTEvent neg
 
-processTime :: Int -> MB ()
+processTime :: Int -> MB u ()
 processTime n = trigger $ TimeTEvent n
 
 -- | Feed a trigger event to the global trigger chain.
-trigger :: TriggerEvent -> MB ()
+trigger :: TriggerEvent -> MB u ()
 trigger ev =
     do
     s <- get
     case (mbTrigger s) of
         Nothing -> finishTEvent ev
         Just t -> do
-                  (res, t') <- runTriggerFlow runTriggerMB t ev
+                  (res, t') <- runTriggerFlow t ev
                   modify $ \x -> x { mbTrigger = t' }
                   mapM_ finishTEvent res
   where
-    finishTEvent :: TriggerEvent -> MB ()
+    finishTEvent :: TriggerEvent -> MB u ()
     finishTEvent ev = case ev of
         LineTEvent line -> echoA line
         SendTEvent line -> send line
-        TelnetTEvent t -> return ()
+        TelnetTEvent t -> echoA (setFg Magenta (toAttrString $ show t))
         GMCPTEvent g -> return ()
         TimeTEvent n -> return ()
 
 -- | Output an error.
-mbError :: String -> MB ()
+mbError :: String -> MB u ()
 mbError str = echo $ "Error: " ++ str
 
-connect :: String -> String -> MB ()
-connect = dispatchConnect
+connect :: String -> String -> MB u ()
+connect h p = liftF $ MBFConnect h p ()
 
 -- | Modify the global TriggerFlow
-modifyTriggers :: (Maybe MBTriggerFlow -> Maybe MBTriggerFlow) -> MB ()
+modifyTriggers :: (Maybe (MBTriggerFlow u) -> Maybe (MBTriggerFlow u)) -> MB u ()
 modifyTriggers f = modify $ \s -> s { mbTrigger = f (mbTrigger s) }
 
-instance MBMonad MB where
-    send = dispatchSend . Communication
-    echoA = dispatchLine
-    ui = dispatchUI
-    io = dispatchIO
+--------------------------------------------------------------------------------------------------
 
-    getUserDataDynamic = gets mbUserData
-
-    putUserDataDynamic d = do
-        modify $ \st -> st { mbUserData = d }
-
-    getMap = gets mbMap
-    putMap d = do modify $ \s -> s { mbMap = d }
-                  dispatchUI $ UIUpdateMap d
-
-    getTime = liftF $ MBFGetTime id
+type MBTrigger u = Trigger (MB u) [TriggerEvent] TriggerEvent
+type MBTriggerM u = TriggerM (MB u) [TriggerEvent] TriggerEvent
+type MBTriggerFlow u = TriggerFlow (MB u) TriggerEvent
 
 --------------------------------------------------------------------------------------------------
 
-instance MBMonad (Trigger (MBTriggerF i) i y) where
-    send s = liftF $ Action $ Send (Communication s) ()
-    echoA s = liftF $ Action $ Echo s ()
-    ui action = liftF $ Action $ PutUI action ()
-    io action = liftF $ Action $ RunIO action id
-
-    getUserDataDynamic = liftF $ Action $ GetUserData id
-    putUserDataDynamic d = liftF $ Action $ PutUserData d ()
-
-    getMap = liftF $ Action $ GetMap id
-    putMap d = liftF $ Action $ PutMap d ()
-
-    getTime = liftF $ Action $ GetTime id
-
--- | Interpreter for the Trigger Monad
-runTriggerMB :: Trigger (MBTriggerF i) i o o -> MB (TriggerResult (MBTriggerF i) i o o)
-runTriggerMB (Pure r) = return $ TResult r
-runTriggerMB (Free (Yield y f)) = return $ TYield y f
-runTriggerMB (Free (Fail)) = return $ TFail
-runTriggerMB (Free (Action (Echo s x))) = echoA s >> runTriggerMB x
-runTriggerMB (Free (Action (Send s x))) = dispatchSend s >> runTriggerMB x
-runTriggerMB (Free (Action (GetUserData g))) = getUserDataDynamic >>= runTriggerMB . g
-runTriggerMB (Free (Action (PutUserData d x))) = putUserDataDynamic d >> runTriggerMB x
-runTriggerMB (Free (Action (PutUI a x))) = ui a >> runTriggerMB x
-runTriggerMB (Free (Action (RunIO action f))) = io action >>= runTriggerMB . f
-runTriggerMB (Free (Action (GetMap g))) = getMap >>= runTriggerMB . g
-runTriggerMB (Free (Action (PutMap d x))) = putMap d >> runTriggerMB x
-runTriggerMB (Free (Action (GetTime g))) = getTime >>= runTriggerMB . g
-
-data MBTriggerF i o = forall a. RunIO (IO a) (a -> o)
-                    | Echo AttrString o
-                    | Send Communication o
-                    | GetUserData (Dynamic -> o)
-                    | PutUserData Dynamic o
-                    | GetMap (Map -> o)
-                    | PutMap Map o
-                    | PutUI (UIAction MB) o
-                    | GetTime (Int -> o)
-
-instance Functor (MBTriggerF i) where
-    fmap f (RunIO io g) = RunIO io $ f . g
-    fmap f (Echo s x) = Echo s $ f x
-    fmap f (Send s x) = Send s $ f x
-    fmap f (GetUserData g) = GetUserData $ f . g
-    fmap f (PutUserData d x) = PutUserData d $ f x
-    fmap f (PutUI a x) = PutUI a $ f x
-    fmap f (GetMap g) = GetMap $ f . g
-    fmap f (PutMap d x) = PutMap d $ f x
-    fmap f (GetTime g) = GetTime $ f . g
-
-type MBTrigger = Trigger (MBTriggerF TriggerEvent) TriggerEvent [TriggerEvent]
-type MBTriggerFlow = TriggerFlow (MBTriggerF TriggerEvent) TriggerEvent
-
---------------------------------------------------------------------------------------------------
-
-mbCoreBuiltins :: [(String, Exp MB Value)]
+mbCoreBuiltins :: [(String, Exp (MB u) Value)]
 mbCoreBuiltins =
     [ ("quit", Function [] $ liftL quit >> return nil)
     , ("echo", Function ["string"] $ do
@@ -425,7 +346,7 @@ mbCoreBuiltins =
         case parse parseValue code of
             Left e -> throwError $ "Parsing error: " ++ e
             Right exp -> do
-                liftL $ modifyTriggers $ fmap (:>>: (Permanent $ lispSendTrigger exp))
+                liftL $ modifyTriggers $ fmap (:>>: (Permanent $ marr $ lispSendTrigger exp))
                 return nil
       )
     , ("on-line", Function ["code"] $ do
@@ -433,29 +354,29 @@ mbCoreBuiltins =
         case parse parseValue code of
             Left e -> throwError $ "Parsing error: " ++ e
             Right exp -> do
-                liftL $ modifyTriggers $ fmap (:>>: (Permanent $ lispLineTrigger exp))
+                liftL $ modifyTriggers $ fmap (:>>: (Permanent $ marr $ lispLineTrigger exp))
                 return nil
       )
     ]
 
-lispSendTrigger :: Exp MBTrigger Value -> TriggerEvent -> MBTrigger [TriggerEvent]
+lispSendTrigger :: Exp (MBTriggerM u) Value -> TriggerEvent -> MBTriggerM u [TriggerEvent]
 lispSendTrigger exp = guardSend >=> \x -> do
     res <- run (mkContext mbBuiltins `mappend` ctx x) exp
     case res of
         Right (Value (StringValue x)) -> return [SendTEvent x]
         Right (Value (AttrStringValue x)) -> return [SendTEvent (fromAttrString x)]
-        Left err -> echoErr ("Trigger error: " ++ err) >> return [SendTEvent x]
+        Left err -> liftT (echoErr ("Trigger error: " ++ err)) >> return [SendTEvent x]
         _ -> return []
   where
     ctx x = (mkContext [("$", mkStringValue x)])
 
-lispLineTrigger :: Exp MBTrigger Value -> TriggerEvent -> MBTrigger [TriggerEvent]
+lispLineTrigger :: Exp (MBTriggerM u) Value -> TriggerEvent -> MBTriggerM u [TriggerEvent]
 lispLineTrigger exp = guardLine >=> \x -> do
     res <- run (mkContext mbBuiltins `mappend` ctx x) exp
     case res of
         Right (Value (StringValue x)) -> return [LineTEvent (toAttrString x)]
         Right (Value (AttrStringValue x)) -> return [LineTEvent x]
-        Left err -> echoErr ("Trigger error: " ++ err) >> return [LineTEvent x]
+        Left err -> liftT (echoErr ("Trigger error: " ++ err)) >> return [LineTEvent x]
         _ -> return []
   where
     ctx x = (mkContext [("$", mkAttrStringValue x)])

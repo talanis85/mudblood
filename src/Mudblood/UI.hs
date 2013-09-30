@@ -22,11 +22,10 @@ data UIAction m = UIStatus String
                 | UIUpdateMap Map
                 | UIShowSidebar Bool
                 | UISetValue String UIValue
-                | UIUpdateWidgets [UIWidget m]
                 | UISetColor Color String
                 | UISetBgColor String
                 | UIBind [Key] (m ())
 
 -- | Widgets are small pieces of information to be displayed by the screen.
-data UIWidget m = UIWidgetText (m String)        -- ^ A singe line of text
-                | UIWidgetTable (m [[String]])   -- ^ A table of textual cells
+data UIWidget = UIWidgetText String        -- ^ A singe line of text
+              | UIWidgetTable [[String]]   -- ^ A table of textual cells

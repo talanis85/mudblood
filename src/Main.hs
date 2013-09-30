@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeOperators #-}
+
 import Mudblood
 import Mudblood.Screen.Gtk
 
@@ -6,6 +8,7 @@ import Data.Dynamic
 import Data.List
 import Data.Maybe
 
+import Control.Arrow
 import Control.Concurrent hiding (yield)
 import Control.Concurrent.STM
 import Control.Monad hiding (guard)
@@ -17,13 +20,17 @@ import qualified Data.Map as M
 
 import Text.Printf
 
-import Mudblood.Contrib.MG
+import Mudblood.Contrib.MG.Prelude
+import Mudblood.Contrib.MG.GMCP
+
+import Data.Has
 
 -- COMMANDS ------------------------------------------------------------
 
-cmds :: [(String, Exp MB Value)]
-cmds =
-    [ ("addprofile", Function ["name"] $ do
+cmds :: [(String, Exp (MB u) Value)]
+cmds = [
+{-
+      ("addprofile", Function ["name"] $ do
         name <- getSymbol "name" >>= typeString
         liftL $ addProfile name
         return nil
@@ -33,7 +40,8 @@ cmds =
         liftL $ loadProfile name
         return nil
       )
-    , ("setcolor", Function ["name", "value"] $ do
+      -}
+      ("setcolor", Function ["name", "value"] $ do
         name <- getSymbol "name" >>= typeString
         value <- getSymbol "value" >>= typeString
         case name of
@@ -72,6 +80,7 @@ cmds =
         liftL $ modifyMap $ mapFly room
         return nil
       )
+      {-
     , ("map.walk", Function ["destination"] $ do
         map <- liftL $ getMap
         dest <- getSymbol "destination" >>= typeInt
@@ -90,22 +99,26 @@ cmds =
                             liftL $ modifyMap $ mapStep first
         return nil
         )
+        -}
     ]
 
 -- TRIGGERS -----------------------------------------------------------
 
-colorTriggers = (Permanent $ triggerRegexMultiline "^\\[[^\\]]+:[^\\]]+\\]" (colorize Blue) "^ " (colorize Blue))
-           :>>: (Permanent $ triggerRegexLine "^<Tanjian>" >=> colorize Blue)
-           :>>: (Permanent $ triggerRegexMultiline "^.+ teilt Dir mit:" (colorize Blue) "^ " (colorize Blue))
-           :>>: (Permanent $ triggerRegexLine "^.+ aus der Ferne\\." >=> colorize Blue)
-           :>>: (Permanent $ triggerRegexLine "^Balance " >=> colorize Blue)
+colorTriggers = (Permanent $ withLine >>> regex "^<Tanjian>" >>> marr (colorize Blue))
+           :>>: (Permanent $ withLine >>> regex "^.+ aus der Ferne\\." >>> marr (colorize Blue))
+           :>>: (Permanent $ withLine >>> regex "^Balance " >>> marr (colorize Blue))
+           :>>: (Permanent $ triggerLoop (withLine >>> regex "^.+ teilt Dir mit:" >>> (marr $ colorize Blue))
+                                         (withLine >>> regex "^ " >>> (marr $ colorize Blue)))
+           :>>: (Permanent $ triggerLoop (withLine >>> regex "^\\[[^]]+:[^]]+]" >>> (marr $ colorize Blue))
+                                         (withLine >>> regex "^ " >>> (marr $ colorize Blue)))
 
-triggers = Permanent gmcpTrigger
-      :>>: Permanent colorFight
-      :>>: Permanent reportTrigger
+triggers = Permanent (keep $ withGMCP >>> triggerGmcpStat)
+      :>>: Permanent (withLine >>> colorFight)
       :>>: guildTriggers
       :>>: colorTriggers
       :>>: Permanent (moveTrigger mgStepper)
+      :>>: Permanent (keep $ withGMCP >>> triggerGmcpRoom)
+      :>>: Permanent (keep $ withTelneg >>> triggerGmcpHello)
 
 {-
 tanjianBindings = [ ([KF1],  spell "meditation")
@@ -123,7 +136,7 @@ tanjianBindings = [ ([KF1],  spell "meditation")
                   ]
                   -}
 
-boot :: Screen ()
+boot :: Screen MGState ()
 boot =
     do
     bind [KEsc, KBS, KAscii '!', KAscii 'q'] $ mb quit
@@ -131,10 +144,8 @@ boot =
     
     --mapM_ (\(a,b) -> bind a (mb b)) tanjianBindings
 
-    mb $ updateWidgetList
-
     --mb $ connect "mg.mud.de" "4711"
-    mb $ connect "openfish" "9999"
+    mb $ connect "nase" "9999"
 
     -- Read rc file
     mbpath <- mb $ io $ initUserPath []
@@ -143,11 +154,27 @@ boot =
         Nothing -> return ()
         Just file -> mb $ command file
 
-    --mb $ initGMCP
+    --mb $ mapM_ send $ gmcpHello ["MG.char 1", "comm.channel 1", "MG.room 1"]
 
     screen
 
+type MGState = FieldOf R_Common
+           :&: FieldOf R_Mapper
+           :&: FieldOf R_Tanjian
+           :&: FieldOf R_Zauberer
+
+mkMGState :: MGState
+mkMGState = fieldOf mkMGCommonState
+          & fieldOf mkMGMapperState
+          & fieldOf mkMGTanjianStats
+          & fieldOf mkMGZaubererStats
+
+widgets = do
+    com <- commonWidgets
+    guild <- guildWidgets
+    mapper <- mapperWidgets
+    return $ [UIWidgetText "Hallo welt"] ++ com ++ guild ++ mapper
+
 main :: IO ()
-main = execScreen (mkMBConfig
-        { confGMCPSupports = ["MG.char 1", "comm.channel 1", "MG.room 1"]
-        }) (mkMBState (Just triggers) mkMGState (cmds ++ mgCommands)) boot
+main = execScreen mkMBConfig (mkMBState (Just triggers) mkMGState (cmds ++ mgCommands)) widgets boot
+
