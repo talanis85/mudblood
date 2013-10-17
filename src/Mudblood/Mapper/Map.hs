@@ -28,6 +28,9 @@ module Mudblood.Mapper.Map
     , getUserValue, putUserValue
     ) where
 
+import Prelude hiding (catch)
+import Control.Exception
+
 import Text.JSON
 import Text.JSON.Types
 
@@ -82,7 +85,9 @@ mapFromString str = case decode str of
 
 -- | Load a map from a file in JSON format.
 mapFromFile :: FilePath -> IO (Maybe Map)
-mapFromFile path = catch (readFile path >>= return . mapFromString) (const $ return Nothing)
+mapFromFile path = catch (readFile path >>= return . mapFromString) errH
+    where errH :: IOException -> IO (Maybe Map)
+          errH = const $ return Nothing
 
 instance JSON Map where
     readJSON (JSObject o) = do
