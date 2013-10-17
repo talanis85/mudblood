@@ -20,7 +20,7 @@ import qualified Data.Map as M
 
 import Text.Printf
 
-import Mudblood.Contrib.MG.Prelude
+import Mudblood.Contrib.MG
 import Mudblood.Contrib.MG.GMCP
 
 import Data.Has

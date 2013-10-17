@@ -128,11 +128,6 @@ mgStatF             = lens _mgStatF             $ \s v -> s { _mgStatF = v }
 
 ------------------------------------------------------------------------------
 
-{-
-state :: (Knows a (TypeOf a) u) => a -> Lens' u (TypeOf a)
-state a = lens (\x -> a ^. x) (\x v -> (a ^= v) x)
--}
-
 getU :: (MBMonad m u, Knows a (TypeOf a) u) => a -> m (TypeOf a)
 getU a = getUserData >>= (\x -> return (a ^. x))
 
@@ -153,11 +148,9 @@ l ??~ v = case v of
 
 ------------------------------------------------------------------------------
 
-
 -- helpers
 readGuild :: String -> Maybe MGGuild
 readGuild "abenteurer"  = Just MGGuildAbenteurer
 readGuild "tanjian"     = Just MGGuildTanjian
 readGuild "zauberer"    = Just MGGuildZauberer
 readGuild _             = Nothing
-

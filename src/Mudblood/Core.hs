@@ -11,11 +11,14 @@ module Mudblood.Core
     -- * The MBF Functor
     , MBF (..)
     -- * MB primitives
-    , command, commands, quit, logger, process, processSend, processTelnet, processTime, mbError
+    , command, commands, quit, logger
+    , process, processSend, processTelnet, processTime, mbError
     , addCommand
     , connect, modifyTriggers
     , gmcpHello
-    , MBMonad (echo, echoA, echoAux, echoErr, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap, getTime)
+    , MBMonad ( echo, echoA, echoAux, echoErr, send, ui, io, getUserData
+              , putUserData, modifyUserData, getMap, putMap, modifyMap, getTime
+              )
     -- * Triggers
     , MBTrigger, MBTriggerM, MBTriggerFlow
     ) where

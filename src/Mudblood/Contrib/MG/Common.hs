@@ -1,5 +1,3 @@
-{-# LANGUAGE Arrows #-}
-
 module Mudblood.Contrib.MG.Common
     ( keep, gag, keep1
     , regex, withLine, withGMCP, withTelneg
@@ -10,15 +8,6 @@ import Text.Regex.TDFA
 import Mudblood
 import Mudblood.Telnet
 import Data.GMCP
-
-------------------------------------------------------------------------------
-
-{-
-(#) :: a -> (a -> b) -> b
-a # f = f a
-
-infix 1 #
--}
 
 ------------------------------------------------------------------------------
 
