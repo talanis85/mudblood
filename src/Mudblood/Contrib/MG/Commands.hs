@@ -80,7 +80,7 @@ cmdMapLoad =
         case map of
             Just map' -> do
                          liftL $ putMap map'
-            Nothing -> throwError "File not found"
+            Nothing -> throwError "Error loading map"
         return nil
 
 cmdMapFly :: Exp (MB u) Value

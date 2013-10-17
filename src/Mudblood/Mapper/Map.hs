@@ -82,7 +82,7 @@ mapFromString str = case decode str of
 
 -- | Load a map from a file in JSON format.
 mapFromFile :: FilePath -> IO (Maybe Map)
-mapFromFile path = readFile path >>= return . mapFromString
+mapFromFile path = catch (readFile path >>= return . mapFromString) (const $ return Nothing)
 
 instance JSON Map where
     readJSON (JSObject o) = do
