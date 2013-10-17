@@ -1,22 +1,33 @@
 {-# LANGUAGE TypeFamilies,TypeOperators,FlexibleContexts #-}
 
 module Mudblood.Contrib.MG.Mapper
-    ( R_Mapper, MGMapperState (..)
+    (
+    -- * The mapper state
+      R_Mapper, MGMapperState (..)
     , mkMGMapperState
+    -- * Map transforms
     , mgPrepareMap
+    -- * Map queries
     , mgFindRoom
-    , mgWalk
-    , mgStepper
+    -- * Map actions
+    , mgWalk, mgWalkBack
+    , mgStep
+    -- * Triggers
     , triggerGmcpRoom
+    -- * Widgets
     , mapperWidgets
     ) where
 
-import Data.Has
+import Data.Has hiding ((^.))
+import Control.Lens
 import Mudblood
 import Mudblood.Contrib.MG.State
 import Mudblood.Contrib.MG.Common
 import qualified Data.Graph.Inductive as G
 import Data.Maybe
+import Data.Monoid
+import Data.Foldable
+import Control.Monad (when)
 import qualified Data.Map as M
 import Control.Arrow
 import Data.GMCP
@@ -25,11 +36,24 @@ data R_Mapper = R_Mapper
 type instance TypeOf R_Mapper = MGMapperState
 
 data MGMapperState = MGMapperState
-    { mgMapperRoomHash    :: String
+    { _mapperRoomHash    :: String
+    , _mapperLastRoom    :: Int
+    , _mapperOverlay     :: [String]
     }
 
+mapperRoomHash  :: Lens' MGMapperState String
+mapperRoomHash  = lens _mapperRoomHash (\s v -> s { _mapperRoomHash = v })
+
+mapperLastRoom  :: Lens' MGMapperState Int
+mapperLastRoom  = lens _mapperLastRoom (\s v -> s { _mapperLastRoom = v })
+
+mapperOverlay   :: Lens' MGMapperState [String]
+mapperOverlay   = lens _mapperOverlay (\s v -> s { _mapperOverlay = v })
+
 mkMGMapperState = MGMapperState
-    { mgMapperRoomHash      = ""
+    { _mapperRoomHash      = ""
+    , _mapperLastRoom      = 0
+    , _mapperOverlay       = ["base"]
     }
 
 portals =
@@ -71,11 +95,6 @@ portals =
     , (40, "abgrund", "9ffe18fd06b3413a982ae16191d27b98")
     ]
 
-mapHash :: Map -> String -> Maybe G.Node
-mapHash m hash = case findRoomsWith (\x -> getUserValue "hash" (roomUserData x) == hash) m of
-                    [] -> Nothing
-                    (x:_) -> Just x
-
 mapAddPortals :: (String -> Maybe G.Node) -> G.Context RoomData ExitData -> G.Context RoomData ExitData
 mapAddPortals hashmap ctx@(i, n, l, o) =
     if checkPortal l
@@ -90,55 +109,79 @@ mapAddPortals hashmap ctx@(i, n, l, o) =
             Nothing -> Nothing
             Just target -> Just (ExitData { exitLayer = "base", exitKey = "t " ++ (show n), exitUserData = M.empty }, target)
 
-mgPrepareMap m = mapMapGraph (G.gmap $ mapAddPortals (mapHash m)) m
+mgPrepareMap :: [String] -> Map -> Map
+mgPrepareMap over m = mapMapGraph ((overlay over) . (G.gmap $ mapAddPortals (findByHash m))) m
+    where findByHash m h = findRoomByUserdata "hash" (== h) m
 
-mgStepper s m = case findNextRoom s (mgPrepareMap m) (mapCurrentId m) of
-                    Nothing -> m
-                    Just n -> mapSetCurrent n m
+mgStep :: (MBMonad m u, Has R_Mapper u) => String -> m ()
+mgStep s = do
+    m <- getMap
+    over <- getU R_Mapper >>= return . (^. mapperOverlay)
+    case findNextRoom s (mgPrepareMap over m) (mapCurrentId m) of
+                Nothing -> return ()
+                Just n -> modifyMap $ mapSetCurrent n
 
 ------------------------------------------------------------------------------
 
-mgWalk :: Int -> MB u ()
+echoMapper :: (MBMonad m u) => String -> m ()
+echoMapper str = echoA $ setFg Magenta $ toAttrString str
+
+mgWalk :: (Has R_Mapper u) => Int -> MB u ()
 mgWalk dest = do
     map <- getMap
+    over <- getU R_Mapper >>= return . (^. mapperOverlay)
 
-    let map' = mgPrepareMap map
+    let map' = mgPrepareMap over map
 
     let walkerTrigger = arr $ const $ WalkerContinue
     let weightfun edge = max (1 :: Int) (getUserValue "weight" (exitUserData edge))
 
     case shortestPath map' weightfun (mapCurrentId map) dest of
-        []           -> mbError "Path not found"
+        []           -> echoMapper "Path not found"
         (first:path) -> do
-                        echo $ "Path is: " ++ show (first:path)
+                        echoMapper $ "Path is: " ++ show (first:path)
+                        --mapperSetLastRoom (mapCurrentId map)
                         modifyTriggers $ fmap (:>>: (walker map' walkerTrigger path))
                         send first
-                        modifyMap $ mapStep first
+                        mgStep first
+
+mgWalkBack :: (Has R_Mapper u) => MB u ()
+mgWalkBack = getU R_Mapper >>= return . (^. mapperLastRoom) >>= mgWalk
 
 mgFindRoom :: String -> MB u (Maybe Int)
 mgFindRoom name = do
     map <- getMap
-    case findRoomsWith (\x -> getUserValue "tag" (roomUserData x) == name) map of
-        (x:_) -> return $ Just x
-        [] -> case findRoomsWith (\x -> getUserValue "hash" (roomUserData x) == name) map of
-            (x:_) -> return $ Just x
-            [] -> return Nothing
+    let byTag = findRoomByUserdata "tag" (== name) map
+    let byHash = findRoomByUserdata "hash" (== name) map
+    return $ getFirst $ First byTag `mappend` First byHash
 
 triggerGmcpRoom :: (Has R_Mapper u) => MBTrigger u GMCP ()
 triggerGmcpRoom = marr $ \gmcp ->
     case gmcpModule gmcp of
-        "MG.room.info" -> modifyU R_Mapper $ \s -> s { mgMapperRoomHash = fromMaybe "" $ getStringField "id" gmcp }
+        "MG.room.info" -> do
+            map <- getMap
+            modifyU R_Mapper $ mapperRoomHash .~ (fromMaybe "" $ getStringField "id" gmcp)
+            forM_ (getStringField "id" gmcp) $ \hash -> do
+                when ((getUserValue "hash" $ roomUserData $ mapCurrentData map) /= hash) $
+                    maybe (echoMapper $ "Raum " ++ hash ++ " nicht gefunden")
+                          (modifyMap . mapSetCurrent)
+                          (findRoomByUserdata "hash" (== hash) map)
         _ -> failT
 
 mapperWidgets :: (Has R_Mapper u) => MB u [UIWidget]
 mapperWidgets = do
     mapstat <- getU R_Mapper
-    map <- getMap
-    let (id, room) = (mapCurrentId map, mapCurrentData map)
+    m <- getMap
+    let (id, room) = (mapCurrentId m, mapCurrentData m)
     let maptable = UIWidgetTable
             [ [ "Raum #:", (show $ id) ]
             , [ "Tag:", (getUserValue "tag" $ roomUserData room) ]
             , [ "Hash:", (getUserValue "hash" $ roomUserData room) ]
-            , [ "Hash':", mapstat # mgMapperRoomHash ]
+            , [ "Hash':", mapstat ^. mapperRoomHash ]
+            , [ "Overlay:", show $ mapstat ^. mapperOverlay ]
+            , [ "Ausgaenge:", let ex = exits (mgPrepareMap (mapstat ^. mapperOverlay) m)
+                              in show $ map (\(_, d) -> exitKey d ++ " (" ++ exitLayer d ++ ")") ex
+              ]
             ]
     return [ maptable ]
+

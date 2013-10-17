@@ -1,46 +1,56 @@
 -- | A very basic Trie implementation that uses arbitrary lists as keys.
 module Data.Trie
     ( Trie
-    , empty, insert, lookup, isPrefix
+    , empty, step, extract, insert
+    , foldStep, isPrefix, lookup
     ) where
 
 import Prelude hiding (lookup)
+--import Control.Comonad
+import Data.Monoid
+import Control.Monad
+import Data.Maybe
+import Control.Applicative hiding (empty)
 
-newtype Trie k v = Trie { getTrie :: Node k v }
+data Trie k v = Trie v (k -> Maybe (Trie k v))
 
-data Node k v = Node (Maybe v) [(k, Node k v)]
+instance (Show k, Show v) => Show (Trie k v) where
+    show (Trie k v) = "Trie " ++ show k
 
--- | The empty trie.
-empty :: Trie k v
-empty = Trie $ Node Nothing []
+instance Functor (Trie k) where
+    fmap f (Trie v g) = Trie (f v) $ fmap (fmap f) . g
 
--- | Insert a (key, value) tuple. If the key already has a value,
---   it is silently overwritten.
-insert :: (Eq k) => Trie k v -> [k] -> v -> Trie k v
-insert t k v = Trie $ insert' (getTrie t) k v
-    where insert' (Node oldv children) [] newv = Node (Just newv) children
-          insert' (Node oldv children) (k:ks) newv = Node oldv (insert'' children k ks newv)
-          insert'' [] k ks v = [(k, insert' (Node Nothing []) ks v)]
-          insert'' ((a,b):xs) k ks v
-            | a == k    = (k, insert' b ks v) : xs
-            | otherwise = (a,b) : (insert'' xs k ks v)
+{-
+instance Comonad (Trie k) where
+    extract (Trie v f) = v
+    extend f node@(Trie v g) = Trie (f node) (extend f . g)
+    --duplicate (Trie v f) = Trie (Trie v f) (duplicate . f)
+-}
 
--- | Lookup a value for a specific key.
-lookup :: (Eq k) => Trie k v -> [k] -> Maybe v
-lookup t k = lookup' (getTrie t) k
-    where lookup' (Node val children) [] = val
-          lookup' (Node val children) (k:ks) = lookup'' children k ks
-          lookup'' [] k ks = Nothing
-          lookup'' ((a,b):xs) k ks
-            | a == k    = lookup' b ks
-            | otherwise = lookup'' xs k ks
+empty :: (Monoid v) => Trie k v
+empty = Trie mempty (const Nothing)
 
--- | Check if the trie contains a specific prefix.
-isPrefix :: (Eq k) => Trie k v -> [k] -> Bool
-isPrefix t k = isPrefix' (getTrie t) k
-    where isPrefix' (Node val children) [] = True
-          isPrefix' (Node val children) (k:ks) = isPrefix'' children k ks
-          isPrefix'' [] k ks = False
-          isPrefix'' ((a,b):xs) k ks
-            | a == k    = isPrefix' b ks
-            | otherwise = isPrefix'' xs k ks
+step :: Trie k v -> k -> Maybe (Trie k v)
+step (Trie v f) k = f k
+
+extract :: Trie k v -> v
+extract (Trie v f) = v
+
+insert :: (Eq k, Monoid v) => [k] -> v -> Trie k v -> Trie k v
+insert [] newval (Trie v f) = Trie newval f
+insert (k:ks) newval (Trie v f) = Trie v newfun
+  where
+    newfun x
+        | x == k    = case f x of
+                        Nothing -> Just $ insert ks newval empty
+                        Just t  -> Just $ insert ks newval t
+        | otherwise = f x
+
+foldStep :: Trie k v -> [k] -> Maybe (Trie k v)
+foldStep = foldM step
+
+isPrefix :: Trie k v -> [k] -> Bool
+isPrefix trie = isJust . foldStep trie
+
+lookup :: (Monoid v) => Trie k v -> [k] -> v
+lookup trie str = fromMaybe mempty $ fmap extract $ foldStep trie str

@@ -33,7 +33,7 @@ walker tempmap f path = Volatile $ marr $ walker' f path
                                   ev' <- yieldT [ev]
                                   walker' f rest ev'
 
-moveTrigger :: (String -> Map -> Map) -> MBTrigger u TriggerEvent [TriggerEvent]
+moveTrigger :: (String -> MBTriggerM u ()) -> MBTrigger u TriggerEvent [TriggerEvent]
 moveTrigger stepper = marr $ guardSend >=> \l -> do
-                liftT $ modifyMap (stepper l)
+                stepper l
                 returnSend l

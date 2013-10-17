@@ -6,6 +6,9 @@ module Mudblood.Screen.Gtk
     , screen
     , mb
     , bind
+    , prompt
+    , createWidgetWindow
+    , createTextWindow
     ) where
 
 import Data.Char
@@ -55,17 +58,23 @@ data SocketEvent = DataEvent String
 
 ------------------------------------------------------------------------------
 
+data Window u = WidgetWindow G.Window (MB u [UIWidget])
+              | MapWindow G.Window
+              | TextWindow G.Window G.TextView String
+
+data Mode u = NormalMode
+            | PromptMode (String -> Screen u ())
+
 data ScreenState u = ScreenState {
     scrPrompt :: String,
     scrMarkedPrompt :: String,
 
-    scrNormalBuffer :: String,
-    scrCommandBuffer :: String,
     scrNormalKeybuffer :: [Key],
 
-    scrWidgets :: MB u [UIWidget],
+    scrWindows :: [Window u],
+    scrBuffers :: M.Map String G.TextBuffer,
 
-    scrBindings :: Trie.Trie Key (Screen u ()),
+    scrBindings :: Trie.Trie Key (Last (Screen u ())),
 
     scrMBState :: MBState u,
     scrMBConfig :: MBConfig,
@@ -73,26 +82,24 @@ data ScreenState u = ScreenState {
     scrSocket :: Maybe TelnetSocket,
 
     scrTime :: Int,
+    scrMode :: Mode u,
 
-    --scrMode :: Mode,
-    
     scrQuit :: Bool
     }
 
-mkScreenState conf initMBState widgets = ScreenState {
+mkScreenState conf initMBState = ScreenState {
     scrPrompt = "",
     scrMarkedPrompt = "",
-    scrNormalBuffer = "",
-    scrCommandBuffer = "",
     scrNormalKeybuffer = [],
     scrBindings = Trie.empty,
-    --scrMode = NormalMode,
     scrMBConfig = conf,
     scrMBState = initMBState,
     scrSocket = Nothing,
     scrQuit = False,
     scrTime = 0,
-    scrWidgets = widgets
+    scrWindows = [],
+    scrBuffers = M.empty,
+    scrMode = NormalMode
 }
 
 data ScreenControls = ScreenControls
@@ -101,11 +108,9 @@ data ScreenControls = ScreenControls
     , ctlMainBuffer     :: G.TextBuffer
     , ctlMainInput      :: G.Entry
     , ctlStatusKeyseq   :: G.Label
-    , ctlStatusUser     :: G.Label
     , ctlStatusSystem   :: G.Label
-    , ctlWidgetArea     :: G.DrawingArea
-    , ctlMapArea        :: G.DrawingArea
-    , ctlSidebar        :: G.VBox
+    , ctlHboxPrompt     :: G.HBox
+    , ctlPromptLabel    :: G.Label
     }
 
 newtype Screen u a = Screen (ReaderT (IORef (ScreenState u), ScreenControls) IO a)
@@ -137,6 +142,7 @@ mb mb = do
     interpMB (Free (MBFQuit x)) = liftIO (G.mainQuit) >> interpMB x
     interpMB (Free (MBFUI a x)) = execUIAction a >> interpMB x
     interpMB (Free (MBFGetTime g)) = gets scrTime >>= interpMB . g
+    interpMB (Free (MBFToBuffer name s x)) = appendToBuffer name s >> interpMB x
 
 ------------------------------------------------------------------------------
 
@@ -189,6 +195,51 @@ sendSocket dat =
 screen :: Screen u ()
 screen = liftIO G.mainGUI
 
+createWidgetWindow :: MB u [UIWidget] -> Screen u ()
+createWidgetWindow widgets = do
+    (stref, controls) <- ask
+
+    newwin <- liftIO $ G.windowNew
+    liftIO $ G.set newwin [ G.windowTypeHint := G.WindowTypeHintUtility ]
+    liftIO $ G.set newwin [ G.windowRole := "mudblood_widgets" ]
+
+    liftIO $ do
+        drawingArea <- G.drawingAreaNew
+        G.containerAdd newwin drawingArea
+        drawingArea `on` G.exposeEvent $ do
+            drawwin <- G.eventWindow
+            style <- liftIO $ G.rcGetStyle drawingArea
+            liftIO $ runScreen controls stref $ drawWidgets drawwin style widgets
+            return False
+    return ()
+
+    modify $ \s -> s { scrWindows = (WidgetWindow newwin widgets) : (scrWindows s) }
+
+    liftIO $ G.widgetShowAll newwin
+
+createTextWindow :: String -> Screen u ()
+createTextWindow name = do
+    (stref, controls) <- ask
+
+    newwin <- liftIO $ G.windowNew
+    liftIO $ G.set newwin [ G.windowTypeHint := G.WindowTypeHintUtility ]
+    liftIO $ G.set newwin [ G.windowRole := "mudblood_text" ]
+
+    buf <- getNamedBuffer name
+    view <- liftIO $ do
+        scroller <- G.scrolledWindowNew Nothing Nothing
+        view <- G.textViewNewWithBuffer buf
+        G.set view [ G.textViewEditable := False ]
+        monoFont <- P.fontDescriptionFromString "monospace"
+        G.widgetModifyFont view $ Just monoFont
+        G.containerAdd scroller view
+        G.containerAdd newwin scroller
+        return view
+
+    modify $ \s -> s { scrWindows = (TextWindow newwin view name) : (scrWindows s) }
+
+    liftIO $ G.widgetShowAll newwin
+
 -- | Append a line to the main line buffer
 appendToMainBuffer :: AttrString -> Screen u ()
 appendToMainBuffer astr = do
@@ -205,7 +256,7 @@ appendToMainBuffer astr = do
         Just promptMark' -> liftIO $ G.textBufferGetIterAtMark mainbuf promptMark'
     liftIO $ G.textBufferDelete mainbuf promptIter endIter
 
-    mapM_ appendChunk (groupAttrString $ untab 8 astr)
+    mapM_ (appendChunk mainbuf) (groupAttrString $ untab 8 astr)
 
     endIter <- liftIO $ G.textBufferGetEndIter mainbuf
     liftIO $ G.textBufferInsert mainbuf endIter $ "\n"
@@ -214,20 +265,37 @@ appendToMainBuffer astr = do
 
     scrollToEnd
 
-  where
-    appendChunk :: (String, Attr) -> Screen u ()
-    appendChunk (s, a) = do
-      ctrls <- askControls
-      let mainbuf = (ctlMainBuffer ctrls)
-      liftIO $ do startIter <- G.textBufferGetEndIter mainbuf
-                  startOffset <- G.textIterGetOffset startIter
-                  G.textBufferInsert mainbuf startIter s
-                  endOffset <- G.textBufferGetEndIter mainbuf >>= G.textIterGetOffset
-                  when (tagNameForAttr a /= "") $ do
-                      startIter' <- G.textBufferGetIterAtOffset mainbuf startOffset
-                      endIter' <- G.textBufferGetIterAtOffset mainbuf endOffset
-                      G.textBufferApplyTagByName mainbuf (tagNameForAttr a) startIter' endIter'
-                      return ()
+appendChunk :: G.TextBuffer -> (String, Attr) -> Screen u ()
+appendChunk mainbuf (s, a) = do
+  liftIO $ do startIter <- G.textBufferGetEndIter mainbuf
+              startOffset <- G.textIterGetOffset startIter
+              G.textBufferInsert mainbuf startIter s
+              endOffset <- G.textBufferGetEndIter mainbuf >>= G.textIterGetOffset
+              when (tagNameForAttr a /= "") $ do
+                  startIter' <- G.textBufferGetIterAtOffset mainbuf startOffset
+                  endIter' <- G.textBufferGetIterAtOffset mainbuf endOffset
+                  G.textBufferApplyTagByName mainbuf (tagNameForAttr a) startIter' endIter'
+                  return ()
+
+getNamedBuffer :: String -> Screen u G.TextBuffer
+getNamedBuffer name = do
+    buffers <- gets scrBuffers
+    case M.lookup name buffers of
+        Nothing -> do
+            ctrls <- askControls
+            tagTable <- liftIO $ G.textBufferGetTagTable (ctlMainBuffer ctrls)
+            newbuf <- liftIO $ G.textBufferNew (Just tagTable)
+            modify $ \s -> s { scrBuffers = M.insert name newbuf (scrBuffers s) }
+            return newbuf
+        Just b -> return b
+
+appendToBuffer :: String -> AttrString -> Screen u ()
+appendToBuffer name str = do
+    buf <- getNamedBuffer name
+    endIter <- liftIO $ G.textBufferGetEndIter buf
+    mapM_ (appendChunk buf) (groupAttrString $ untab 8 str)
+    endIter <- liftIO $ G.textBufferGetEndIter buf
+    liftIO $ G.textBufferInsert buf endIter $ "\n"
 
 scrollToEnd :: Screen u ()
 scrollToEnd = do
@@ -270,25 +338,36 @@ updatePrompt = do
 execUIAction :: UIAction (MB u) -> Screen u ()
 execUIAction action = case action of
     UIBind keystring action -> bind keystring (mb $ action)
-    UIStatus str -> askControls >>= (\l -> liftIO $ G.labelSetText l str) . ctlStatusUser
-    UIShowSidebar state -> askControls >>= liftIO . (if state then G.widgetShow else G.widgetHide) . ctlSidebar
     UIUpdateMap map -> do
         ctls <- askControls
         liftIO $ G.labelSetText (ctlStatusSystem ctls) $
             printf "Room: %d" (mapCurrentId map)
-    --UIUpdateWidgets w -> modify $ \s -> s { scrWidgets = w }
     UISetBgColor val -> do
         ctls <- askControls
+        windows <- gets scrWindows
         case parseColour val of
             Nothing -> return ()
-            Just c -> liftIO $ G.widgetModifyBase (ctlMainView ctls) G.StateNormal (colourToGdk c)
+            Just c -> do
+                liftIO $ G.widgetModifyBase (ctlMainView ctls) G.StateNormal (colourToGdk c)
+                forM_ windows $ \w ->
+                    case w of
+                        TextWindow win view name ->
+                            liftIO $ G.widgetModifyBase view G.StateNormal (colourToGdk c)
+                        _ -> return ()
     UISetColor c val -> do
         ctls <- askControls
         tagTable <- liftIO $ G.textBufferGetTagTable (ctlMainBuffer ctls)
         case c of
             DefaultColor -> case parseColour val of
                 Nothing -> return ()
-                Just c' -> liftIO $ G.widgetModifyText (ctlMainView ctls) G.StateNormal (colourToGdk c')
+                Just c' -> do
+                    windows <- gets scrWindows
+                    liftIO $ G.widgetModifyText (ctlMainView ctls) G.StateNormal (colourToGdk c')
+                    forM_ windows $ \w ->
+                        case w of
+                            TextWindow win view name ->
+                                liftIO $ G.widgetModifyText view G.StateNormal (colourToGdk c')
+                            _ -> return ()
             c' -> case colorToName c of
                     "" -> return ()
                     colname -> case parseColour val of
@@ -351,11 +430,21 @@ initUI path stref = do
     mainBuffer      <- G.textViewGetBuffer mainView
     mainInput       <- GB.builderGetObject builder G.castToEntry        "mainInput"
     statusKeyseq    <- GB.builderGetObject builder G.castToLabel        "statusKeyseq"
-    statusUser      <- GB.builderGetObject builder G.castToLabel        "statusUser"
     statusSystem    <- GB.builderGetObject builder G.castToLabel        "statusSystem"
-    widgetArea      <- GB.builderGetObject builder G.castToDrawingArea  "widgetArea"
-    mapArea         <- GB.builderGetObject builder G.castToDrawingArea  "mapArea"
-    sidebar         <- GB.builderGetObject builder G.castToVBox         "sidebar"
+    hboxPrompt      <- GB.builderGetObject builder G.castToHBox         "hboxPrompt"
+    promptLabel     <- GB.builderGetObject builder G.castToLabel        "promptLabel"
+
+{-
+    widgetWindow <- G.windowNew
+    widgetArea <- G.drawingAreaNew
+
+    G.set widgetWindow [ G.windowTypeHint := G.WindowTypeHintUtility ]
+    G.containerAdd widgetWindow widgetArea
+
+    G.widgetShowAll widgetWindow
+
+    widgetArea `on` G.sizeRequest $ return $ G.Requisition 200 200
+    -}
 
     let controls = ScreenControls
             { ctlMainView       = mainView
@@ -363,11 +452,9 @@ initUI path stref = do
             , ctlMainBuffer     = mainBuffer
             , ctlMainInput      = mainInput
             , ctlStatusKeyseq   = statusKeyseq
-            , ctlStatusUser     = statusUser
             , ctlStatusSystem   = statusSystem
-            , ctlWidgetArea     = widgetArea
-            , ctlMapArea        = mapArea
-            , ctlSidebar        = sidebar
+            , ctlHboxPrompt     = hboxPrompt
+            , ctlPromptLabel    = promptLabel
             }
 
     monoFont <- P.fontDescriptionFromString "monospace"
@@ -379,7 +466,7 @@ initUI path stref = do
     G.widgetModifyFont mainInput $ Just monoFont
 
     G.widgetModifyFont statusKeyseq $ Just monoFont
-    G.widgetModifyFont statusUser $ Just monoFont
+    G.widgetModifyFont promptLabel $ Just monoFont
     G.widgetModifyFont statusSystem $ Just monoFont
 
     tagTable <- G.textBufferGetTagTable mainBuffer
@@ -422,18 +509,17 @@ initUI path stref = do
             return False
     -}
 
+    {-
     widgetArea `on` G.exposeEvent $ do
         drawwin <- G.eventWindow
         liftIO $ runScreen controls stref $ drawWidgets drawwin
         return False
-
-    mapArea `on` G.exposeEvent $ do
-        drawwin <- G.eventWindow
-        liftIO $ runScreen controls stref $ drawMap drawwin
-        return False
+        -}
 
     -- Quit when the window is closed
     window `on` G.deleteEvent $ liftIO G.mainQuit >> return False
+
+    G.set window [ G.windowRole := "mudblood_main" ]
 
     G.widgetShowAll window
 
@@ -452,11 +538,11 @@ updateTimer n = do
     updateWidgets
 
 -- | Run the screen
-execScreen :: MBConfig -> (MBState u) -> MB u [UIWidget] -> Screen u () -> IO ()
-execScreen conf initMBState widgets action =
+execScreen :: MBConfig -> (MBState u) -> Screen u () -> IO ()
+execScreen conf initMBState action =
     do
     G.initGUI
-    stref <- newIORef $ mkScreenState conf initMBState widgets
+    stref <- newIORef $ mkScreenState conf initMBState
     --gladepath <- getDataFileName "gui.glade"
     --ctrls <- initUI gladepath stref
     ctrls <- initUI "gui.glade" stref
@@ -471,25 +557,39 @@ execScreen conf initMBState widgets action =
 
 handleKey :: Key -> Screen u Bool
 handleKey key = do
-    wasBinding <- handleKeybinding key
     ctrls <- askControls
-    st <- get
-    liftIO $ G.labelSetText (ctlStatusKeyseq ctrls) $ concat [show x | x <- scrNormalKeybuffer st]
-    if wasBinding then return True
-                  else case key of
-                           KEnter -> do
-                                     text <- liftIO $ G.get (ctlMainInput ctrls) G.entryText
-                                     case text of
-                                        cmd@('(':_) -> mb $ command cmd
-                                        _ -> do
-                                             mb $ echoA $ (toAttrString $ (scrMarkedPrompt st) ++ (scrPrompt st))
-                                                          `mappend`
-                                                          (setFg Yellow (toAttrString text))
-                                             mb $ processSend text
-                                     liftIO $ G.set (ctlMainInput ctrls) [ G.entryText := "" ]
-                                     updateWidgets
-                                     return True
-                           _ -> return False
+    mode <- gets scrMode
+    case mode of
+        PromptMode tgt -> do
+            case key of
+                KEnter -> do
+                    text <- liftIO $ G.get (ctlMainInput ctrls) G.entryText
+                    liftIO $ G.set (ctlMainInput ctrls) [ G.entryText := "" ]
+                    modify $ \s -> s { scrMode = NormalMode }
+                    liftIO $ G.set (ctlPromptLabel ctrls) [ G.widgetVisible := False, G.labelText := "" ]
+                    tgt text
+                    return True
+                _ -> return False
+        NormalMode -> do
+            wasBinding <- handleKeybinding key
+            st <- get
+            liftIO $ G.labelSetText (ctlStatusKeyseq ctrls) $ concat [show x | x <- scrNormalKeybuffer st]
+            if wasBinding then return True
+                          else case key of
+                                   KEnter -> do
+                                             text <- liftIO $ G.get (ctlMainInput ctrls) G.entryText
+                                             case text of
+                                                cmd@('(':_) -> mb $ command cmd
+                                                _ -> do
+                                                     mb $ echoA $ (toAttrString $ (scrMarkedPrompt st) ++ (scrPrompt st))
+                                                                  `mappend`
+                                                                  (setFg Yellow (toAttrString text))
+                                                     mb $ processSend text
+                                             --liftIO $ G.set (ctlMainInput ctrls) [ G.entryText := "" ]
+                                             liftIO $ G.editableSelectRegion (ctlMainInput ctrls) 0 100
+                                             updateWidgets
+                                             return True
+                                   _ -> return False
 
 handleKeybinding :: Key -> Screen u Bool
 handleKeybinding k = do
@@ -498,13 +598,22 @@ handleKeybinding k = do
     if Trie.isPrefix (scrBindings st) kb
         then do
              case Trie.lookup (scrBindings st) kb of
-                    Nothing -> modify (\s -> s { scrNormalKeybuffer = kb })
-                    Just ac -> ac >> modify (\s -> s { scrNormalKeybuffer = [] })
+                    Last Nothing -> modify (\s -> s { scrNormalKeybuffer = kb })
+                    Last (Just ac) -> ac >> modify (\s -> s { scrNormalKeybuffer = [] })
              return True
         else modify (\s -> s { scrNormalKeybuffer = [] }) >> return False
 
 bind :: [Key] -> Screen u () -> Screen u ()
-bind keys ac = modify $ \s -> s { scrBindings = Trie.insert (scrBindings s) keys ac }
+bind keys ac = modify $ \s -> s { scrBindings = Trie.insert keys (Last $ Just ac) (scrBindings s) }
+
+------------------------------------------------------------------------------
+
+prompt :: String -> (String -> Screen u ()) -> Screen u ()
+prompt title f = do
+    ctls <- askControls
+    modify $ \s -> s { scrMode = PromptMode f }
+    liftIO $ G.set (ctlPromptLabel ctls) [ G.widgetVisible := True, G.labelText := title ]
+    liftIO $ liftIO $ G.widgetGrabFocus (ctlMainInput ctls)
 
 ------------------------------------------------------------------------------
 
@@ -555,19 +664,20 @@ handleTelneg neg = case neg of
 
 updateWidgets :: Screen u ()
 updateWidgets = do
-    ctls <- askControls
-    liftIO $ G.widgetQueueDraw (ctlWidgetArea ctls)
+    windows <- gets scrWindows
+    forM_ windows $ \w ->
+        case w of
+            WidgetWindow win action -> liftIO $ G.widgetQueueDraw win
+            _ -> return ()
 
-drawWidgets :: G.DrawWindow -> Screen u ()
-drawWidgets win = do
-    widgets <- gets scrWidgets >>= mb
-    ctls <- askControls
-    style <- liftIO $ G.rcGetStyle (ctlWidgetArea ctls)
+drawWidgets :: G.DrawWindow -> G.Style -> MB u [UIWidget] -> Screen u ()
+drawWidgets win style widgets = do
+    widgets <- mb widgets
 
     actions <- forM widgets $ \w -> do
         case w of
-            UIWidgetText str -> return (renderTextWidget style str)
-            UIWidgetTable tab -> return (renderTableWidget style tab)
+            UIWidgetText str -> return $ renderTextWidget style str
+            UIWidgetTable tab -> return $ renderTableWidget style tab
 
     liftIO $ G.renderWithDrawable win $ do
         C.translate 8.0 14.0

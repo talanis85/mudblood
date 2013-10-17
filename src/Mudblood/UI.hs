@@ -18,9 +18,7 @@ instance Show UIValue where
     show (UIIntValue i) = show i
     show UINilValue = "NIL"
 
-data UIAction m = UIStatus String
-                | UIUpdateMap Map
-                | UIShowSidebar Bool
+data UIAction m = UIUpdateMap Map
                 | UISetValue String UIValue
                 | UISetColor Color String
                 | UISetBgColor String
@@ -29,3 +27,4 @@ data UIAction m = UIStatus String
 -- | Widgets are small pieces of information to be displayed by the screen.
 data UIWidget = UIWidgetText String        -- ^ A singe line of text
               | UIWidgetTable [[String]]   -- ^ A table of textual cells
+              | UIWidgetGauge Int Int Int

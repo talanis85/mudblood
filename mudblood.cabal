@@ -30,7 +30,8 @@ executable mudblood
     build-depends:      base, mtl, stm, utf8-string, bytestring, monad-coroutine,
                         network, hint, containers, split, binary,
                         parsec, either, regex-base, regex-tdfa, array,
-                        free, json, fgl, filepath, directory, lens, time, colour, has
+                        free, json, fgl, filepath, directory, lens, time, colour, has,
+                        template-haskell
     hs-source-dirs:     src
 
     if os(windows)

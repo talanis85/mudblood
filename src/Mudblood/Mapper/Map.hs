@@ -5,20 +5,25 @@ module Mudblood.Mapper.Map
     -- * Types
       Map (..)
     , RoomData (..)
+    , roomModifyUserData
     , ExitData (..)
     , UserValue (..)
     , UserValueClass (..)
     -- * Loading maps
     , mapEmpty, mapFromString, mapFromFile
     -- * Transforming a map
-    , mapStep, mapFly
+    --, mapStep
     , mapMapGraph
     , mapSetCurrent
+    , overlay
+    , mapModifyRoomData
     -- * Querying a map
     , mapCurrentData
     , findNextRoom
     , shortestPath
-    , findRoomsWith
+    , findRoomsBy, findRoomBy
+    , findRoomByUserdata
+    , exits
     -- * Handling User Data
     , getUserValue, putUserValue
     ) where
@@ -28,6 +33,7 @@ import Text.JSON.Types
 
 import qualified Data.Map as M
 import Data.List
+import Data.Maybe
 
 import Data.Graph.Inductive hiding (Gr)
 import Data.Graph.Inductive.PatriciaTree
@@ -214,6 +220,8 @@ getUserValue key ud = fromUserValue $ M.findWithDefault UserValueNull key ud
 putUserValue :: (UserValueClass a) => String -> a -> UserData -> UserData
 putUserValue key val ud = M.insert key (toUserValue val) ud
 
+roomModifyUserData f r = r { roomUserData = f (roomUserData r) }
+
 ------------------------------------------------------------------------------
 
 -- | Get the current room's RoomData.
@@ -239,10 +247,19 @@ shortestPath m weightfun src dest = let graph = mapGraph m
                                     in (d, (exitKey edge):p)
           goesTo d' (_, d, _) = d == d'
 
-findRoomsWith :: (RoomData -> Bool) -> Map -> [Node]
-findRoomsWith f m = let graph = mapGraph m
-                        folder ctx accu = if f (lab' ctx) then (node' ctx) : accu else accu
-                    in ufold folder [] graph
+findRoomsBy :: (RoomData -> Bool) -> Map -> [Node]
+findRoomsBy f m = let graph = mapGraph m
+                      folder ctx accu = if f (lab' ctx) then (node' ctx) : accu else accu
+                  in ufold folder [] graph
+
+findRoomBy :: (RoomData -> Bool) -> Map -> Maybe Node
+findRoomBy f m = listToMaybe $ findRoomsBy f m
+
+findRoomByUserdata key f = findRoomBy (\x -> f $ getUserValue key (roomUserData x))
+
+exits :: Map -> [(Node, ExitData)]
+exits m = let cur = mapCurrentId m
+          in lsuc (mapGraph m) cur
 
 ------------------------------------------------------------------------------
 
@@ -253,13 +270,26 @@ findNextRoom key m n = case filter (hasKey key . snd) (lsuc (mapGraph m) n) of
   where
     hasKey key l = exitKey l == key
 
-mapStep :: String -> Map -> Map
-mapStep key m = case findNextRoom key m (mapCurrentId m) of
-    Nothing -> m
-    Just n  -> m { mapCurrentId = n }
-
 mapSetCurrent :: Node -> Map -> Map
 mapSetCurrent n m = m { mapCurrentId = n }
 
-mapFly :: Node -> Map -> Map
-mapFly n m = m { mapCurrentId = n }
+mapModifyRoomData :: Node -> (RoomData -> RoomData) -> Map -> Map
+mapModifyRoomData node f = mapMapGraph $ gmap (modifyRoom node f)
+    where
+        modifyRoom node f ctx@(i, n, l, o)
+            | node == n = (i, n, f l, o)
+            | otherwise = ctx
+
+------------------------------------------------------------------------------
+
+overlay :: [String] -> MapGraph -> MapGraph
+overlay layers gr = gmap (applyLayers layers) gr
+    where
+        applyLayers layers (i, n, l, o) = (i, n, l, overlay' layers o)
+
+        overlay' layers edges = foldr (unionBy equalKey) [] $ reverse $ splitByLayers layers edges
+
+        splitByLayers layers edges = snd $ foldr splitByLayers' (edges, []) layers
+        splitByLayers' layer (edges, cur) = (edges, filter ((== layer) . exitLayer . fst) edges : cur)
+
+        equalKey (a, _) (b, _) = exitKey a == exitKey b

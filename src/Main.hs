@@ -52,34 +52,6 @@ cmds = [
                         Just c -> liftL $ ui $ UISetColor c value
         return nil
         )
-    , ("map.findTag", Function ["tag"] $ do
-        tag <- getSymbol "tag" >>= typeString
-        map <- liftL $ getMap
-        case findRoomsWith (\x -> getUserValue "tag" (roomUserData x) == tag) map of
-            [] -> return nil
-            (destroom:_) -> return $ mkIntValue destroom
-        )
-    , ("map.findHash", Function ["hash"] $ do
-        tag <- getSymbol "hash" >>= typeString
-        map <- liftL $ getMap
-        case findRoomsWith (\x -> getUserValue "hash" (roomUserData x) == tag) map of
-            [] -> return nil
-            (destroom:_) -> return $ mkIntValue destroom
-        )
-    , ("map.load", Function ["filename"] $ do
-        filename <- getSymbol "filename" >>= typeString
-        map <- liftL $ io $ mapFromFile filename
-        case map of
-            Just map' -> do
-                         liftL $ putMap map'
-            Nothing -> throwError "File not found"
-        return nil
-        )
-    , ("map.fly", Function ["room"] $ do
-        room <- getSymbol "room" >>= typeInt
-        liftL $ modifyMap $ mapFly room
-        return nil
-      )
       {-
     , ("map.walk", Function ["destination"] $ do
         map <- liftL $ getMap
@@ -107,20 +79,27 @@ cmds = [
 colorTriggers = (Permanent $ withLine >>> regex "^<Tanjian>" >>> marr (colorize Blue))
            :>>: (Permanent $ withLine >>> regex "^.+ aus der Ferne\\." >>> marr (colorize Blue))
            :>>: (Permanent $ withLine >>> regex "^Balance " >>> marr (colorize Blue))
+           {-
            :>>: (Permanent $ triggerLoop (withLine >>> regex "^.+ teilt Dir mit:" >>> (marr $ colorize Blue))
                                          (withLine >>> regex "^ " >>> (marr $ colorize Blue)))
+                                         -}
            :>>: (Permanent $ triggerLoop (withLine >>> regex "^\\[[^]]+:[^]]+]" >>> (marr $ colorize Blue))
                                          (withLine >>> regex "^ " >>> (marr $ colorize Blue)))
+           :>>: (Permanent $ triggerLoop (withLine >>> regex "^.+ teilt Dir mit:" >>> (keep1 toCommunication) >>> (arr $ setFg Blue) >>> (marr $ returnLine))
+                                         (withLine >>> regex "^ " >>> (keep1 toCommunication) >>> (arr $ setFg Blue) >>> (marr $ returnLine)))
+
+toCommunication :: MBTrigger u AttrString ()
+toCommunication = marr $ \x -> echoAux "communication" (setFg Blue x)
 
 triggers = Permanent (keep $ withGMCP >>> triggerGmcpStat)
+      :>>: Permanent (keep $ withGMCP >>> triggerGmcpCommunication >>> (keep1 toCommunication) >>> (arr $ setFg Blue) >>> (marr $ returnLine))
       :>>: Permanent (withLine >>> colorFight)
       :>>: guildTriggers
       :>>: colorTriggers
-      :>>: Permanent (moveTrigger mgStepper)
+      :>>: Permanent (moveTrigger mgStep)
       :>>: Permanent (keep $ withGMCP >>> triggerGmcpRoom)
       :>>: Permanent (keep $ withTelneg >>> triggerGmcpHello)
 
-{-
 tanjianBindings = [ ([KF1],  spell "meditation")
                   , ([KF2],  spell "kokoro")
                   , ([KF3],  spell "kami %f")
@@ -134,18 +113,30 @@ tanjianBindings = [ ([KF1],  spell "meditation")
                   , ([KF11], spell "samusa %f")
                   , ([KF12], spell "kshira %f")
                   ]
-                  -}
+
+walkToTag tag = do
+    map <- getMap
+    case findRoomsBy (\x -> getUserValue "tag" (roomUserData x) == tag) map of
+        [] -> return ()
+        (r:_) -> mgWalk r
 
 boot :: Screen MGState ()
 boot =
     do
     bind [KEsc, KBS, KAscii '!', KAscii 'q'] $ mb quit
     bind [KEsc, KBS, KAscii '!', KAscii 'x', KEsc, KBS, KAscii 'q'] $ mb quit
-    
-    --mapM_ (\(a,b) -> bind a (mb b)) tanjianBindings
+
+    bind [KAscii '\\', KAscii 'w'] $ prompt "Walk" $ mb . walkToTag
+    bind [KAscii '\\', KAscii '\t', KAscii 'b'] $ mb $ mgWalkBack
+
+    mapM_ (\(a,b) -> bind a (mb b)) tanjianBindings
 
     --mb $ connect "mg.mud.de" "4711"
-    mb $ connect "nase" "9999"
+    --mb $ connect "nase" "9999"
+    mb $ connect "localhost" "9999"
+
+    createWidgetWindow widgets
+    createTextWindow "communication"
 
     -- Read rc file
     mbpath <- mb $ io $ initUserPath []
@@ -176,5 +167,5 @@ widgets = do
     return $ [UIWidgetText "Hallo welt"] ++ com ++ guild ++ mapper
 
 main :: IO ()
-main = execScreen mkMBConfig (mkMBState (Just triggers) mkMGState (cmds ++ mgCommands)) widgets boot
+main = execScreen mkMBConfig (mkMBState (Just triggers) mkMGState (cmds ++ mgCommands ++ mapperCommands)) boot
 

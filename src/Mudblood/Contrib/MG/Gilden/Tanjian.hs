@@ -9,7 +9,9 @@ module Mudblood.Contrib.MG.Gilden.Tanjian
     , tanjianWidgets
     ) where
 
-import Data.Has
+import Data.Has hiding ((^.))
+import Control.Lens
+
 import Control.Arrow
 
 import Text.Regex.TDFA
@@ -28,24 +30,47 @@ data TriState = On
               | Between
 
 data MGTanjianStats = MGTanjianStats
-    { mgTanjianStatM  :: TriState
-    , mgTanjianStatKO :: Bool
-    , mgTanjianStatTE :: TriState
-    , mgTanjianStatHA :: Bool
-    , mgTanjianStatAK :: TriState
-    , mgTanjianStatAKQuality :: TriState
-    , mgTanjianStatAKTime :: Int
+    { _tanjianStatM  :: TriState
+    , _tanjianStatKO :: Bool
+    , _tanjianStatTE :: TriState
+    , _tanjianStatHA :: Bool
+    , _tanjianStatAK :: TriState
+    , _tanjianStatAKQuality :: TriState
+    , _tanjianStatAKTime :: Int
     }
 
 mkMGTanjianStats = MGTanjianStats
-    { mgTanjianStatM  = Off
-    , mgTanjianStatKO = False
-    , mgTanjianStatTE = Off
-    , mgTanjianStatHA = False
-    , mgTanjianStatAK = Off
-    , mgTanjianStatAKQuality = Off
-    , mgTanjianStatAKTime = 0
+    { _tanjianStatM  = Off
+    , _tanjianStatKO = False
+    , _tanjianStatTE = Off
+    , _tanjianStatHA = False
+    , _tanjianStatAK = Off
+    , _tanjianStatAKQuality = Off
+    , _tanjianStatAKTime = 0
     }
+
+------------------------------------------------------------------------------
+
+tanjianStatM    :: Lens' MGTanjianStats TriState
+tanjianStatM    = lens _tanjianStatM $ \s v -> s { _tanjianStatM = v }
+
+tanjianStatKO   :: Lens' MGTanjianStats Bool
+tanjianStatKO   = lens _tanjianStatKO $ \s v -> s { _tanjianStatKO = v }
+
+tanjianStatTE   :: Lens' MGTanjianStats TriState
+tanjianStatTE   = lens _tanjianStatTE $ \s v -> s { _tanjianStatTE = v }
+
+tanjianStatHA   :: Lens' MGTanjianStats Bool
+tanjianStatHA   = lens _tanjianStatHA $ \s v -> s { _tanjianStatHA = v }
+
+tanjianStatAK   :: Lens' MGTanjianStats TriState
+tanjianStatAK   = lens _tanjianStatAK $ \s v -> s { _tanjianStatAK = v }
+
+tanjianStatAKQuality :: Lens' MGTanjianStats TriState
+tanjianStatAKQuality = lens _tanjianStatAKQuality $ \s v -> s { _tanjianStatAKQuality = v }
+
+tanjianStatAKTime :: Lens' MGTanjianStats Int
+tanjianStatAKTime = lens _tanjianStatAKTime $ \s v -> s { _tanjianStatAKTime = v }
 
 ------------------------------------------------------------------------------
 
@@ -54,14 +79,14 @@ tanjianWidgets = do
     stats <- getU R_Tanjian
     t <- getTime
     let tanjitable = UIWidgetTable
-            [ [ "Meditation:",  showMeditation $ stats # mgTanjianStatM ]
-            , [ "Kokoro:",      showBool $ stats # mgTanjianStatKO ]
-            , [ "Tegatana:",    showTegatana $ stats # mgTanjianStatTE ]
-            , [ "Omamori:",     showOmamori $ stats # mgTanjianStatTE ]
-            , [ "Hayai:",       showBool $ stats # mgTanjianStatHA ]
-            , [ "Akshara:",     showAkshara (stats # mgTanjianStatAK)
-                                            (stats # mgTanjianStatAKQuality)
-                                            (t - (stats # mgTanjianStatAKTime)) ]
+            [ [ "Meditation:",  showMeditation  $ stats ^. tanjianStatM ]
+            , [ "Kokoro:",      showBool        $ stats ^. tanjianStatKO ]
+            , [ "Tegatana:",    showTegatana    $ stats ^. tanjianStatTE ]
+            , [ "Omamori:",     showOmamori     $ stats ^. tanjianStatTE ]
+            , [ "Hayai:",       showBool        $ stats ^. tanjianStatHA ]
+            , [ "Akshara:",     showAkshara (stats ^. tanjianStatAK)
+                                            (stats ^. tanjianStatAKQuality)
+                                            (t - (stats ^. tanjianStatAKTime)) ]
             ]
     return [ tanjitable ]
   where
@@ -92,34 +117,35 @@ mgTanjianReport :: (Has R_Common u, Has R_Tanjian u) => MBTrigger u AttrString (
 mgTanjianReport = marr $ \x ->
     case x =~ "^\\$REPORT\\$ ([[:digit:]]+) ([[:digit:]]+) ([[:digit:]]+) ([[:digit:]]+) ([[:digit:]]+) '(.+)' ([JN])([JN])([JN])([JN]) ([[:word:]]+) ([ -+]) ([[:word:]]+) ([[:word:]]+) ([[:word:]]+) ([JjN]) ([[:digit:]]+)" :: [[String]] of
         r:rs ->
-            let statfun = \s -> s
-                  { mgStatLP        = (read $ r !! 1)
-                  , mgStatMLP       = (read $ r !! 2)
-                  , mgStatKP        = (read $ r !! 3)
-                  , mgStatMKP       = (read $ r !! 4)
-                  , mgStatVO        = (read $ r !! 5)
-                  , mgStatFR        = r !! 6
-                  , mgStatG         = (if (r !! 7) == "J" then 1 else 0)
-                  , mgStatB         = (if (r !! 8) == "J" then True else False)
-                  , mgStatT         = (if (r !! 9) == "J" then True else False)
-                  , mgStatF         = (if (r !! 10) == "J" then True else False)
-                  }
-                tanjifun = \s -> s
-                  { mgTanjianStatKO = (if (r !! 11) == "ja" then True else False)
-                  , mgTanjianStatTE  = case (r !! 12) of
+            let statfun =
+                    (mgStatLP        .~ (read $ r !! 1))
+                  . (mgStatMLP       .~ (read $ r !! 2))
+                  . (mgStatKP        .~ (read $ r !! 3))
+                  . (mgStatMKP       .~ (read $ r !! 4))
+                  . (mgStatVO        .~ (read $ r !! 5))
+                  . (mgStatFR        .~ r !! 6)
+                  . (mgStatG         .~ (if (r !! 7) == "J" then 1 else 0))
+                  . (mgStatB         .~ (if (r !! 8) == "J" then True else False))
+                  . (mgStatT         .~ (if (r !! 9) == "J" then True else False))
+                  . (mgStatF         .~ (if (r !! 10) == "J" then True else False))
+                tanjifun =
+                    (tanjianStatKO  .~ (if (r !! 11) == "ja" then True else False))
+                  . (tanjianStatTE  .~ case (r !! 12) of
                             "+" -> On
                             "-" -> Between
                             _   -> Off
-                  , mgTanjianStatHA = (if (r !! 13) == "ja" then True else False)
-                  , mgTanjianStatAK = case (r !! 14) of
+                    )
+                  . (tanjianStatHA  .~ (if (r !! 13) == "ja" then True else False))
+                  . (tanjianStatAK  .~ case (r !! 14) of
                             "ja" -> On
                             "busy" -> Between
                             _   -> Off
-                  , mgTanjianStatM = case (r !! 16) of
+                    )
+                  . (tanjianStatM   .~ case (r !! 16) of
                             "J" -> On
                             "j" -> Between
                             _   -> Off
-                  }
+                    )
             in modifyUserData $ (R_Common ^: statfun) . (R_Tanjian ^: tanjifun)
         [] -> failT
 
@@ -138,7 +164,7 @@ mgAksharaTimeTriggers = Permanent (withLine >>> ak1) :>>: Permanent (withLine >>
 
 aksharaSetup :: (Has R_Tanjian u) => TriState -> MBTrigger u AttrString [TriggerEvent]
 aksharaSetup quality = marr $ \x -> do
-    getTime >>= \t -> modifyU R_Tanjian $ \x -> x { mgTanjianStatAKTime = t, mgTanjianStatAKQuality = quality }
+    getTime >>= \t -> modifyU R_Tanjian $ (tanjianStatAKTime .~ t) . (tanjianStatAKQuality .~ quality)
     returnLine x
 
 -------------------------------------------------------------------------------}

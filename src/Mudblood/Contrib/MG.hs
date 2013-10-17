@@ -346,30 +346,6 @@ colorFight = marr $ \x ->
 
 ------------------------------------------------------------------------------
 
-spell :: (MBMonad m) => String -> m ()
-spell sp = do
-    focus <- getU R_Common >>= return . mgFocus
-    let final = case focus of
-                    Nothing -> sp
-                    Just f  -> replace "%f" f sp
-    echoA $ (toAttrString "> ") `mappend` (setFg Yellow $ toAttrString final)
-    send final
-  where
-    replace :: Eq a => [a] -> [a] -> [a] -> [a]
-    replace needle replacement haystack
-      = case begins haystack needle of
-          Just remains -> replacement ++ remains
-          Nothing      -> case haystack of
-                            []     -> []
-                            x : xs -> x : replace needle replacement xs
-
-    begins :: Eq a => [a] -> [a] -> Maybe [a]
-    begins haystack []                = Just haystack
-    begins (x : xs) (y : ys) | x == y = begins xs ys
-    begins _        _                 = Nothing
-
-------------------------------------------------------------------------------
-
 reportTrigger :: MBTrigger TriggerEvent [TriggerEvent]
 reportTrigger = (marr guardLine) >>> proc x -> do
     guild <- marr (\_ -> getU R_Common >>= return . mgGuild) -< ()

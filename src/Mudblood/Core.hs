@@ -9,13 +9,13 @@ module Mudblood.Core
     , MBConfig (..), mkMBConfig
     , LogSeverity (LogDebug, LogInfo, LogWarning, LogError)
     -- * The MBF Functor
-    , MBF (MBFIO, MBFLine, MBFSend, MBFConnect, MBFQuit, MBFUI, MBFGetTime)
+    , MBF (..)
     -- * MB primitives
     , command, commands, quit, logger, process, processSend, processTelnet, processTime, mbError
     , addCommand
     , connect, modifyTriggers
     , gmcpHello
-    , MBMonad (echo, echoA, echoErr, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap, getTime)
+    , MBMonad (echo, echoA, echoAux, echoErr, send, ui, io, getUserData, putUserData, modifyUserData, getMap, putMap, modifyMap, getTime)
     -- * Triggers
     , MBTrigger, MBTriggerM, MBTriggerFlow
     ) where
@@ -68,6 +68,8 @@ class (Monad m) => MBMonad m u | m -> u where
     echo :: String -> m ()
     echo = echoA . toAttrString
 
+    echoAux :: String -> AttrString -> m ()
+
     echoErr :: String -> m ()
     echoErr = echoA . (setFg Red) . toAttrString
 
@@ -97,6 +99,7 @@ class (Monad m) => MBMonad m u | m -> u where
 
 instance MBMonad (MB u) u where
     echoA x = liftF $ MBFLine x ()
+    echoAux name s = liftF $ MBFToBuffer name s ()
     send x = liftF $ MBFSend (Communication x) ()
     ui action = liftF $ MBFUI action ()
     io action = liftF $ MBFIO action id
@@ -109,6 +112,7 @@ instance MBMonad (MB u) u where
 
 instance MBMonad (TriggerM (MB u) y r) u where
     echoA = liftT . echoA
+    echoAux name s = liftT $ echoAux name s
     send = liftT . send
     ui = liftT . ui
     io = liftT . io
@@ -156,6 +160,7 @@ mkMBConfig = MBConfig
 
 data MBF u o = forall a. MBFIO (IO a) (a -> o)
              | MBFLine AttrString o
+             | MBFToBuffer String AttrString o
              | MBFSend Communication o
              | MBFConnect String String o
              | MBFQuit o
@@ -166,6 +171,7 @@ instance Functor (MBF u) where
     fmap f (MBFIO action g) = MBFIO action $ f . g
     fmap f (MBFUI action x) = MBFUI action $ f x
     fmap f (MBFLine l x) = MBFLine l $ f x
+    fmap f (MBFToBuffer name s x) = MBFToBuffer name s $ f x
     fmap f (MBFSend dat x) = MBFSend dat $ f x
     fmap f (MBFConnect host port x) = MBFConnect host port $ f x
     fmap f (MBFQuit x) = MBFQuit $ f x
@@ -334,11 +340,6 @@ mbCoreBuiltins =
                         Left e -> mbError $ "Error in binding for " ++ (show ks) ++ ": " ++ e
                         Right r -> return ()
                     return ()
-        return nil
-      )
-    , ("sidebar", Function ["state"] $ do
-        state <- getSymbol "state" >>= typeBool
-        liftL $ ui $ UIShowSidebar state
         return nil
       )
     , ("on-send", Function ["code"] $ do

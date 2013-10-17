@@ -6,13 +6,14 @@ module Mudblood.Contrib.MG.Prelude
     , module Mudblood.Contrib.MG.Gilden.Zauberer
     , module Mudblood.Contrib.MG.Gilden.Tanjian
     , module Mudblood.Contrib.MG.Mapper
+    , module Mudblood.Contrib.MG.Commands
 
     , triggerLoop
     , commonWidgets
     , guildWidgets
     , colorFight
     , guildTriggers
-    , mgCommands
+    , spell
     ) where
 
 import Text.Regex.TDFA
@@ -21,7 +22,8 @@ import Data.Maybe
 import Data.Monoid
 import Control.Arrow
 import Control.Monad
-import Data.Has
+import Data.Has (Has)
+import Control.Lens
 
 import Mudblood
 import Mudblood.Contrib.MG.Common
@@ -29,6 +31,14 @@ import Mudblood.Contrib.MG.State
 import Mudblood.Contrib.MG.Gilden.Zauberer
 import Mudblood.Contrib.MG.Gilden.Tanjian
 import Mudblood.Contrib.MG.Mapper
+import Mudblood.Contrib.MG.Commands
+
+{-
+(#) :: a -> (a -> b) -> b
+a # f = f a
+
+infix 1 #
+-}
 
 ------------------------------------------------------------------------------
 
@@ -91,23 +101,47 @@ guildTriggers = tanjianTriggers :>>: zaubererTriggers
 
 ------------------------------------------------------------------------------
 
+spell :: (MBMonad m u, Has R_Common u) => String -> m ()
+spell sp = do
+    focus <- getU' R_Common mgFocus
+    let final = case focus of
+                    Nothing -> sp
+                    Just f  -> replace "%f" f sp
+    echoA $ (toAttrString "> ") `mappend` (setFg Yellow $ toAttrString final)
+    send final
+  where
+    replace :: Eq a => [a] -> [a] -> [a] -> [a]
+    replace needle replacement haystack
+      = case begins haystack needle of
+          Just remains -> replacement ++ remains
+          Nothing      -> case haystack of
+                            []     -> []
+                            x : xs -> x : replace needle replacement xs
+
+    begins :: Eq a => [a] -> [a] -> Maybe [a]
+    begins haystack []                = Just haystack
+    begins (x : xs) (y : ys) | x == y = begins xs ys
+    begins _        _                 = Nothing
+
+------------------------------------------------------------------------------
+
 commonWidgets :: (Has R_Common u) => MB u [UIWidget]
 commonWidgets = do
     stats <- getU R_Common
     let chartable = UIWidgetTable
-            [ [ "Name:", (stats # mgCharName) ]
-            , [ "Rasse:", (stats # mgCharRace) ]
-            , [ "Level:", (show $ stats # mgCharLevel) ]
+            [ [ "Name:", (stats ^. mgCharName) ]
+            , [ "Rasse:", (stats ^. mgCharRace) ]
+            , [ "Level:", (show $ stats ^. mgCharLevel) ]
             ]
     let stattable = UIWidgetTable
-            [ [ "LP:", (show $ stats # mgStatLP) ++ " (" ++ (show $ stats # mgStatMLP) ++ ")" ]
-            , [ "KP:", (show $ stats # mgStatKP) ++ " (" ++ (show $ stats # mgStatMKP) ++ ")" ]
-            , [ "Vorsicht:", (show $ stats # mgStatVO) ]
-            , [ "Fluchtrichtung:", (show $ stats # mgStatFR) ]
-            , [ "Gift:", (showGift $ stats # mgStatG) ]
-            , [ "Blind:", (showBool $ stats # mgStatB) ]
-            , [ "Taub:", (showBool $ stats # mgStatT) ]
-            , [ "Frosch:", (showBool $ stats # mgStatF) ]
+            [ [ "LP:", (show $ stats ^. mgStatLP) ++ " (" ++ (show $ stats ^. mgStatMLP) ++ ")" ]
+            , [ "KP:", (show $ stats ^. mgStatKP) ++ " (" ++ (show $ stats ^. mgStatMKP) ++ ")" ]
+            , [ "Vorsicht:", (show $ stats ^. mgStatVO) ]
+            , [ "Fluchtrichtung:", (show $ stats ^. mgStatFR) ]
+            , [ "Gift:", (showGift $ stats ^. mgStatG) ]
+            , [ "Blind:", (showBool $ stats ^. mgStatB) ]
+            , [ "Taub:", (showBool $ stats ^. mgStatT) ]
+            , [ "Frosch:", (showBool $ stats ^. mgStatF) ]
             ]
     return [ UIWidgetText "--- CHARACTER ---"
            , chartable
@@ -123,34 +157,8 @@ commonWidgets = do
 
 guildWidgets :: (Has R_Zauberer u, Has R_Tanjian u, Has R_Common u) => MB u [UIWidget]
 guildWidgets = do
-    guild <- getU R_Common >>= return . mgGuild
+    guild <- getU' R_Common mgGuild
     case guild of
         MGGuildTanjian -> tanjianWidgets
         MGGuildZauberer -> zaubererWidgets
         _ -> return []
-
-------------------------------------------------------------------------------
-
-mgCommands :: (Has R_Common u) => [(String, Exp (MB u) Value)]
-mgCommands =
-    [ ("focus", Function ["..."] $ do
-        args <- getSymbol "..." >>= typeList
-        case args of
-            [] -> liftL (getU R_Common) >>= return . mkStringValue . fromMaybe "" . mgFocus
-            (x:[]) -> do
-                f <- typeString x
-                liftL $ modifyU R_Common $ \s -> s { mgFocus = (if f == "" then Nothing else Just f)}
-                return $ mkStringValue f
-      )
-    , ("walk", Function ["target"] $ do
-        target <- getSymbol "target"
-        case target of
-            Value (IntValue x)    -> liftL $ mgWalk x
-            Value (StringValue x) -> do
-                r <- liftL $ mgFindRoom x
-                case r of
-                    Nothing -> throwError "Room not found"
-                    Just r -> liftL $ mgWalk r
-        return nil
-      )
-    ]
