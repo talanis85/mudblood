@@ -104,14 +104,10 @@
               </packing>
             </child>
             <child>
-              <object class="GtkHBox" id="hboxPrompt">
+              <object class="GtkLabel" id="statusUser">
+                <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <child>
-                  <placeholder/>
-                </child>
-                <child>
-                  <placeholder/>
-                </child>
+                <property name="label" translatable="yes">label</property>
               </object>
               <packing>
                 <property name="expand">True</property>

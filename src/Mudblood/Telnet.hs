@@ -27,7 +27,6 @@ import Control.Monad.Writer
 import Control.Monad.State
 
 import Control.Concurrent
-import Control.Concurrent.STM
 
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString as B
@@ -78,6 +77,7 @@ fromTelnetCommand cmd = case cmd of
 
 -- | Telneg options
 data TelnetOption = OPT_UNKNOWN Word8
+                  | OPT_TIMING_MARK
                   | OPT_EOR
                   | OPT_NAWS
                   | OPT_GMCP
@@ -85,14 +85,16 @@ data TelnetOption = OPT_UNKNOWN Word8
 
 toTelnetOption :: (Integral a) => a -> TelnetOption
 toTelnetOption x = case x of
-    25 -> OPT_EOR
-    31 -> OPT_NAWS
+    6   -> OPT_TIMING_MARK
+    25  -> OPT_EOR
+    31  -> OPT_NAWS
     201 -> OPT_GMCP
     -- etc.
     x -> OPT_UNKNOWN (fromIntegral x)
 
 fromTelnetOption :: (Integral a) => TelnetOption -> a
 fromTelnetOption opt = case opt of
+    OPT_TIMING_MARK -> 6
     OPT_EOR -> 25
     OPT_NAWS -> 31
     OPT_GMCP -> 201
@@ -137,6 +139,7 @@ data TelnegResult = TelnegNone
                   | TelnegComplete TelnetNeg
     deriving (Show)
 
+-- | Most beautiful custom telneg parser
 telnegParse :: TelnegState -> Word8 -> (TelnegState, TelnegResult)
 telnegParse state ch = do
     case state of

@@ -3,10 +3,11 @@
 module Mudblood.Trigger
     ( module Control.Trigger
     -- * The trigger event type
-    , TriggerEvent (LineTEvent, SendTEvent, TelnetTEvent, GMCPTEvent, TimeTEvent)
+    , TriggerEvent (..)
     -- * Trigger functions
     -- ** Guards
-    , guardT, guardLine, guardSend, guardTime
+    , guardT, guardLine, guardSend, guardTime, guardTelneg, guardGMCP
+    , guardBlock, joinBlock
     -- ** Yielding
     , yieldLine, yieldSend, yieldTime
     -- ** Returning
@@ -14,6 +15,7 @@ module Mudblood.Trigger
     -- ** Kleisli arrow
     , (>=>)
     -- * Common triggers
+    , on
     -- ** Coloring
     , colorize
     ) where
@@ -35,7 +37,10 @@ data TriggerEvent = LineTEvent AttrString   -- ^ Emitted when a line was receive
                   | TelnetTEvent TelnetNeg  -- ^ Emitted when a telnet negotiation is received
                   | GMCPTEvent GMCP         -- ^ Emitted when a GMCP telneg is received
                   | TimeTEvent Int          -- ^ Emitted every second. Argument is current POSIX timestamp.
-    deriving (Eq)
+                  | BellTEvent              -- ^ Emitted on bell character.
+                  | NilTEvent               -- ^ Dummy event type
+                  | CustomTEvent String     -- ^ User defined events
+    deriving (Eq, Show)
 
 -- | Fail if the condition is False.
 guardT :: (Monad m) => Bool -> TriggerM m y r ()
@@ -56,6 +61,31 @@ guardTime :: (Monad m) => TriggerEvent -> TriggerM m y r Int
 guardTime ev = case ev of
     TimeTEvent s -> return s
     _            -> failT
+
+guardTelneg :: (Monad m) => TriggerEvent -> TriggerM m y r TelnetNeg
+guardTelneg ev = case ev of
+    TelnetTEvent s -> return s
+    _              -> failT
+
+guardGMCP :: (Monad m) => TriggerEvent -> TriggerM m y r GMCP
+guardGMCP ev = case ev of
+    GMCPTEvent gmcp -> return gmcp
+    _ -> failT
+
+guardBlock :: (Monad m) => TriggerEvent -> TriggerM m [TriggerEvent] TriggerEvent [AttrString]
+guardBlock ev = readBlock [] ev
+    where
+        readBlock acc ev = case ev of
+            TelnetTEvent (TelnetNeg (Just CMD_EOR) Nothing []) -> return acc
+            LineTEvent s -> yieldT [ev] >>= readBlock (acc ++ [s])
+            _ -> failT
+
+joinBlock :: [AttrString] -> AttrString
+joinBlock [] = mempty
+joinBlock [a] = a
+joinBlock (x:xs) = foldr joinBlock' x xs
+    where
+        joinBlock' x a = a <> (toAttrString " ") <> x
 
 -- | Yield a line event
 yieldLine :: (Monad m) => AttrString -> TriggerM m [TriggerEvent] r r
@@ -79,3 +109,9 @@ returnTime x = return [TimeTEvent x]
 -- | Colorize an AttrString
 colorize :: (Monad m) => Color -> AttrString -> TriggerM m i y [TriggerEvent]
 colorize c x = returnLine $ setFg c x
+
+on :: (Monad m) => (a -> TriggerM m y r b) -> TriggerM m y r c -> a -> TriggerM m y r [a]
+on trig action ev = do
+    trig ev
+    action
+    return [ev]

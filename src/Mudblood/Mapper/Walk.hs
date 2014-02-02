@@ -1,7 +1,6 @@
 module Mudblood.Mapper.Walk
     ( walker
     , WalkerControl (..)
-    , moveTrigger
     ) where
 
 import Data.List
@@ -19,21 +18,21 @@ data WalkerControl = WalkerStop
                    | WalkerPause
                    | WalkerContinue
 
-walker :: Map -> MBTrigger u TriggerEvent WalkerControl -> [String] -> MBTriggerFlow u
-walker tempmap f path = Volatile $ marr $ walker' f path
+-- | Trigger to auto-walk from one room to another.
+walker :: Map                                           -- ^ The map to use
+       -> (TriggerEvent -> MBTrigger u WalkerControl)   -- ^ Trigger that decides when to continue or stop
+       -> [String]                                      -- ^ The path to walk
+       -> MBTrigger u [TriggerEvent]
+
+walker _ _ [] = return []
+walker tempmap f (first:path) = do
+                                yieldT [SendTEvent first] >>= walker' f path
     where walker' f [] ev = return [ev]
           walker' f (s:rest) ev = do
-            ret <- runKleisli f ev
+            ret <- f ev
             case ret of
                 WalkerStop -> return [ev]
                 WalkerPause -> failT
                 WalkerContinue -> do
-                                  liftT $ send s
-                                  liftT $ modifyMap $ \m -> mapSetCurrent (fromMaybe (mapCurrentId m) (findNextRoom s tempmap (mapCurrentId m))) m
-                                  ev' <- yieldT [ev]
+                                  ev' <- yieldT [ev, SendTEvent s]
                                   walker' f rest ev'
-
-moveTrigger :: (String -> MBTriggerM u ()) -> MBTrigger u TriggerEvent [TriggerEvent]
-moveTrigger stepper = marr $ guardSend >=> \l -> do
-                stepper l
-                returnSend l

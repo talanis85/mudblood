@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, FlexibleContexts #-}
 
 module Mudblood.Text
     (
@@ -6,7 +6,12 @@ module Mudblood.Text
       Attr (attrStyle, attrFg, attrBg), AttrString
     , Style (StyleNormal, StyleBold, StyleUnderline)
     , Color (DefaultColor, Black, White, Cyan, Magenta, Blue, Yellow, Green, Red)
+    , StringClass (toString)
     , defaultAttr
+    -- * Regexes
+    , attrMatch, attrMatch'
+    , compileRegex, compileRegex', execRegex, execRegex'
+    , matchRegex, matchRegex'
     -- * Conversion to and from strings
     , decode, toAttrString, fromAttrString
     -- * Misc transformations
@@ -21,6 +26,8 @@ module Mudblood.Text
 
 import Data.Char
 import Data.Monoid
+import Data.Either
+import qualified Data.Array as Array
 import Control.Monad
 
 import Text.ParserCombinators.Parsec
@@ -28,6 +35,9 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language (haskellDef)
 
 import Text.Regex.TDFA
+import qualified Text.Regex.TDFA.String as Regex
+
+import Debug.Trace
 
 data Style = StyleNormal | StyleBold | StyleUnderline
     deriving (Show, Eq)
@@ -101,17 +111,29 @@ instance Monoid AttrString where
     mempty = AttrString []
     mappend (AttrString a) (AttrString b) = AttrString (a ++ b)
 
+mapAttrString f (AttrString s) = AttrString $ f s
+
+class StringClass a where
+    toString :: a -> String
+
+instance StringClass String where
+    toString str = str
+
+instance StringClass AttrString where
+    toString str = fromAttrString str
+
 (<++>) :: AttrString -> AttrString -> AttrString
 (<++>) = mappend
 
 instance Show AttrString where
     show (AttrString s) = map fst s
 
+{-
 instance Extract AttrString where
     empty = toAttrString ""
-    before i s = toAttrString $ before i $ fromAttrString s
-    after i s = toAttrString $ after i $ fromAttrString s
-    extract w s = toAttrString $ extract w $ fromAttrString s
+    before i s = mapAttrString (take i) s
+    after i s = mapAttrString (drop i) s
+    extract w s = mapAttrString (take (snd w) . drop (fst w)) s
 
 instance RegexContext Regex AttrString [[String]] where
     match r s = map (map fromAttrString) (match r s)
@@ -122,6 +144,31 @@ instance RegexContext Regex AttrString [[String]] where
 instance RegexLike Regex AttrString where
     matchOnce r s = matchOnce r (fromAttrString s)
     matchAll r s = matchAll r (fromAttrString s)
+-}
+
+compileRegex = Regex.compile defaultCompOpt defaultExecOpt
+compileRegex' = either (const Nothing) Just . compileRegex
+
+execRegex r s =
+    case Regex.execute r s of
+        Left _ -> []
+        Right Nothing -> []
+        Right (Just arr) -> map matches $ Array.elems arr
+  where matches (off, len) = extract (off, len) s
+
+execRegex' r s = not $ null $ execRegex r s
+
+matchRegex r = case compileRegex' r of
+    Nothing -> const []
+    Just re -> \s -> execRegex re s
+
+matchRegex' r = not . null . matchRegex r
+
+attrMatch :: (RegexMaker Regex CompOption ExecOption source, RegexContext Regex String target) => AttrString -> source -> target
+attrMatch a b = (fromAttrString a) =~ b
+
+attrMatch' :: (RegexMaker Regex CompOption ExecOption source, RegexContext Regex String target) => source -> AttrString -> target
+attrMatch' b = (=~ b) . fromAttrString
 
 -- | Decompose an AttrString into (string, attribute) pairs.
 groupAttrString :: AttrString -> [(String, Attr)]

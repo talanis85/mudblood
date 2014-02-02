@@ -1,12 +1,8 @@
 module Control.Trigger.Flow
-    ( Trigger
-    , TriggerFlow (Permanent, Volatile, (:||:), (:>>:))
+    ( TriggerFlow (Permanent, Volatile, (:||:), (:>>:))
     , runTriggerFlow
-    -- * Combinators
-    --, whileT
     ) where
 
-import Control.Trigger.Arrow
 import Control.Trigger.Monad
 import Control.Monad.Coroutine
 import Control.Arrow
@@ -17,8 +13,8 @@ import Data.Monoid
 -- A TriggerFlow is a flow chart of triggers. Triggers can either be Permanent or
 -- Volatile. They can be combined in sequence or parallel.
 
-data TriggerFlow m t = Permanent (Trigger m [t] t t [t])
-                     | Volatile (Trigger m [t] t t [t])
+data TriggerFlow m t = Permanent (t -> TriggerM m [t] t [t])
+                     | Volatile (t -> TriggerM m [t] t [t])
                      | TriggerFlow m t :||: TriggerFlow m t
                      | TriggerFlow m t :>>: TriggerFlow m t
 
@@ -36,16 +32,18 @@ runTriggerFlow :: (Applicative m, Monad m)
                -> t
                -> m ([t], Maybe (TriggerFlow m t))
 
-runTriggerFlow (Permanent t) arg = run <$> runTriggerM (runKleisli t arg)
+runTriggerFlow (Permanent t) arg = run <$> runTriggerM (t arg)
     where run res = case res of
             Right v -> (v, Just (Permanent t))
-            Left (Yield v g) -> (v, Just (Volatile (marr g) :>>: Permanent t))
+            Left (Yield v g) -> (v, Just (Volatile g :>>: Permanent t))
+            Left (Replace v g) -> (v, Just (Permanent g))
             Left Fail -> ([arg], Just (Permanent t))
 
-runTriggerFlow (Volatile t) arg = run <$> runTriggerM (runKleisli t arg)
+runTriggerFlow (Volatile t) arg = run <$> runTriggerM (t arg)
     where run res = case res of
             Right v -> (v, Nothing)
-            Left (Yield v g) -> (v, Just (Volatile $ marr g))
+            Left (Yield v g) -> (v, Just (Volatile g))
+            Left (Replace v g) -> (v, Just (Volatile g))
             Left Fail -> ([arg], Just (Volatile t))
 
 runTriggerFlow (f1 :||: f2) arg = do

@@ -35,15 +35,6 @@ data Exp m v = Symbol String
              | List [Exp m v]
              | Value v
 
-{- Is this a functor somehow???
-instance (Monad m) => Functor (Exp m) where
-    fmap f (Value v) = Value $ fmap f v
-    fmap f (List x) = List $ fmap f x
-    fmap f (Function r sig) = Function (fmap f r) sig
-    fmap f (Special r sig) = Special (fmap f r) sig
-    fmap f (Symbol s) = Symbol s
--}
-
 type ErrorStateT m v = ErrorT String (StateT (Context m v) m)
 type Result m v = ErrorStateT m v (Exp m v)
 type FunctionSignature = [String]
@@ -85,6 +76,7 @@ eval (List (x:xs))      = eval x >>= apply
         applyArgsToContext ("...":_) args           = updateSymbol "..." (List args)
         applyArgsToContext (earg:exArgs) (arg:args) = do updateSymbol earg arg
                                                          applyArgsToContext exArgs args
+        applyArgsToContext (earg:exArgs) []         = throwError $ "Too few arguments. Expected '" ++ earg ++ "'"
         applyArgsToContext [] _                     = return ()
 
         updateSymbol s eval_e = modify $ \ctx -> M.insert s eval_e ctx
@@ -157,11 +149,11 @@ typeList x = case x of
     _ -> throwError "Type error: Expected list"
 
 typeFunction x = case x of
-    Function r sig -> return (r, sig)
+    Function sig r -> return (sig, r)
     _ -> throwError "Type error: Expected function"
 
 typeSpecial x = case x of
-    Special r sig -> return (r, sig)
+    Special sig r -> return (sig, r)
     _ -> throwError "Type error: Expected special"
 
 typeValue x = case x of

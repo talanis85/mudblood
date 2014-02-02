@@ -2,13 +2,14 @@
 
 module Mudblood.Screen.Gtk
     ( execScreen
-    , Screen (Screen)
+    , Screen (..), ScreenState (..)
     , screen
     , mb
     , bind
     , prompt
-    , createWidgetWindow
-    , createTextWindow
+    , setStatus
+    , askControls
+    , ScreenControls (..)
     ) where
 
 import Data.Char
@@ -49,18 +50,12 @@ import Mudblood.Mapper
 
 import Paths_mudblood
 
--- data Mode = NormalMode | CommandMode
-
 -- | Socket Events
 data SocketEvent = DataEvent String
                  | TelnetEvent TelnetNeg
                  | CloseEvent
 
 ------------------------------------------------------------------------------
-
-data Window u = WidgetWindow G.Window (MB u [UIWidget])
-              | MapWindow G.Window
-              | TextWindow G.Window G.TextView String
 
 data Mode u = NormalMode
             | PromptMode (String -> Screen u ())
@@ -71,8 +66,8 @@ data ScreenState u = ScreenState {
 
     scrNormalKeybuffer :: [Key],
 
-    scrWindows :: [Window u],
     scrBuffers :: M.Map String G.TextBuffer,
+    scrStatus :: MB u String,
 
     scrBindings :: Trie.Trie Key (Last (Screen u ())),
 
@@ -84,7 +79,11 @@ data ScreenState u = ScreenState {
     scrTime :: Int,
     scrMode :: Mode u,
 
-    scrQuit :: Bool
+    scrQuit :: Bool,
+
+    scrWidgetCache :: [UIWidget],
+
+    scrUpdateHandler :: Screen u ()
     }
 
 mkScreenState conf initMBState = ScreenState {
@@ -97,19 +96,22 @@ mkScreenState conf initMBState = ScreenState {
     scrSocket = Nothing,
     scrQuit = False,
     scrTime = 0,
-    scrWindows = [],
     scrBuffers = M.empty,
-    scrMode = NormalMode
+    scrStatus = return "",
+    scrMode = NormalMode,
+    scrWidgetCache = [],
+    scrUpdateHandler = return ()
 }
 
 data ScreenControls = ScreenControls
-    { ctlMainView       :: G.TextView
+    { ctlBuilder        :: GB.Builder
+    , ctlMainView       :: G.TextView
     , ctlMainScroll     :: G.ScrolledWindow
     , ctlMainBuffer     :: G.TextBuffer
     , ctlMainInput      :: G.Entry
     , ctlStatusKeyseq   :: G.Label
+    , ctlStatusUser     :: G.Label
     , ctlStatusSystem   :: G.Label
-    , ctlHboxPrompt     :: G.HBox
     , ctlPromptLabel    :: G.Label
     }
 
@@ -141,6 +143,8 @@ mb mb = do
     interpMB (Free (MBFSend d x)) = sendSocket d >> interpMB x
     interpMB (Free (MBFQuit x)) = liftIO (G.mainQuit) >> interpMB x
     interpMB (Free (MBFUI a x)) = execUIAction a >> interpMB x
+    --interpMB (Free (MBFDialog desc handler x)) = createDialogWindow desc handler >> interpMB x
+    interpMB (Free (MBFDialog desc handler x)) = interpMB x
     interpMB (Free (MBFGetTime g)) = gets scrTime >>= interpMB . g
     interpMB (Free (MBFToBuffer name s x)) = appendToBuffer name s >> interpMB x
 
@@ -168,19 +172,17 @@ connectScreen host port =
     telnetReceiveProc st ev = let (Screen s) = telnetReceive ev
                               in G.postGUIAsync $ runReaderT s st
 
--- | Handle a SocketEvent
-telnetReceive :: SocketEvent -> Screen u ()
-telnetReceive ev = do
-    st <- get
-    case ev of
-        DataEvent chars  -> do (p, _) <- mb $ process (scrPrompt st) chars defaultAttr -- TODO: where to save current attr?
-                               modify $ \st -> st { scrPrompt = p }
-                               updatePrompt
-        CloseEvent          -> mb $ echo "Connection closed"
-        TelnetEvent neg     -> do
-                               handleTelneg neg
-                               mb $ logger LogDebug $ show neg
-    updateWidgets
+    telnetReceive ev = do
+        st <- get
+        case ev of
+            DataEvent chars  -> do (p, _) <- mb $ process (scrPrompt st) chars defaultAttr -- TODO: where to save current attr?
+                                   modify $ \st -> st { scrPrompt = p }
+                                   updatePrompt
+            CloseEvent          -> mb $ echo "Connection closed"
+            TelnetEvent neg     -> do
+                                   handleTelneg neg
+                                   mb $ logger LogDebug $ show neg
+        updateWidgets
 
 -- | Send a byte array to the socket (if existent)
 sendSocket :: Communication -> Screen u ()
@@ -192,53 +194,13 @@ sendSocket dat =
          Nothing -> appendToMainBuffer (toAttrString "No socket")
 
 -- | The screen main loop
-screen :: Screen u ()
-screen = liftIO G.mainGUI
+screen :: Screen u () -> Screen u ()
+screen updateHandler = do
+    modify $ \s -> s { scrUpdateHandler = updateHandler }
+    liftIO G.mainGUI
 
-createWidgetWindow :: MB u [UIWidget] -> Screen u ()
-createWidgetWindow widgets = do
-    (stref, controls) <- ask
-
-    newwin <- liftIO $ G.windowNew
-    liftIO $ G.set newwin [ G.windowTypeHint := G.WindowTypeHintUtility ]
-    liftIO $ G.set newwin [ G.windowRole := "mudblood_widgets" ]
-
-    liftIO $ do
-        drawingArea <- G.drawingAreaNew
-        G.containerAdd newwin drawingArea
-        drawingArea `on` G.exposeEvent $ do
-            drawwin <- G.eventWindow
-            style <- liftIO $ G.rcGetStyle drawingArea
-            liftIO $ runScreen controls stref $ drawWidgets drawwin style widgets
-            return False
-    return ()
-
-    modify $ \s -> s { scrWindows = (WidgetWindow newwin widgets) : (scrWindows s) }
-
-    liftIO $ G.widgetShowAll newwin
-
-createTextWindow :: String -> Screen u ()
-createTextWindow name = do
-    (stref, controls) <- ask
-
-    newwin <- liftIO $ G.windowNew
-    liftIO $ G.set newwin [ G.windowTypeHint := G.WindowTypeHintUtility ]
-    liftIO $ G.set newwin [ G.windowRole := "mudblood_text" ]
-
-    buf <- getNamedBuffer name
-    view <- liftIO $ do
-        scroller <- G.scrolledWindowNew Nothing Nothing
-        view <- G.textViewNewWithBuffer buf
-        G.set view [ G.textViewEditable := False ]
-        monoFont <- P.fontDescriptionFromString "monospace"
-        G.widgetModifyFont view $ Just monoFont
-        G.containerAdd scroller view
-        G.containerAdd newwin scroller
-        return view
-
-    modify $ \s -> s { scrWindows = (TextWindow newwin view name) : (scrWindows s) }
-
-    liftIO $ G.widgetShowAll newwin
+setStatus :: MB u String -> Screen u ()
+setStatus action = modify $ \s -> s { scrStatus = action }
 
 -- | Append a line to the main line buffer
 appendToMainBuffer :: AttrString -> Screen u ()
@@ -337,23 +299,20 @@ updatePrompt = do
 
 execUIAction :: UIAction (MB u) -> Screen u ()
 execUIAction action = case action of
+    UIPrompt title handler -> prompt title (mb . handler)
+    UISetCompletion comp -> return () -- TODO
     UIBind keystring action -> bind keystring (mb $ action)
+    UIUpdateWindow name -> return () --updateWindow name
     UIUpdateMap map -> do
         ctls <- askControls
         liftIO $ G.labelSetText (ctlStatusSystem ctls) $
             printf "Room: %d" (mapCurrentId map)
     UISetBgColor val -> do
         ctls <- askControls
-        windows <- gets scrWindows
         case parseColour val of
             Nothing -> return ()
             Just c -> do
                 liftIO $ G.widgetModifyBase (ctlMainView ctls) G.StateNormal (colourToGdk c)
-                forM_ windows $ \w ->
-                    case w of
-                        TextWindow win view name ->
-                            liftIO $ G.widgetModifyBase view G.StateNormal (colourToGdk c)
-                        _ -> return ()
     UISetColor c val -> do
         ctls <- askControls
         tagTable <- liftIO $ G.textBufferGetTagTable (ctlMainBuffer ctls)
@@ -361,13 +320,7 @@ execUIAction action = case action of
             DefaultColor -> case parseColour val of
                 Nothing -> return ()
                 Just c' -> do
-                    windows <- gets scrWindows
                     liftIO $ G.widgetModifyText (ctlMainView ctls) G.StateNormal (colourToGdk c')
-                    forM_ windows $ \w ->
-                        case w of
-                            TextWindow win view name ->
-                                liftIO $ G.widgetModifyText view G.StateNormal (colourToGdk c')
-                            _ -> return ()
             c' -> case colorToName c of
                     "" -> return ()
                     colname -> case parseColour val of
@@ -403,6 +356,7 @@ mapKey chr name = case name of
     "Return"    -> Just KEnter
     "Escape"    -> Just KEsc
     "BackSpace" -> Just KBS
+    "Tab"       -> Just KTab
 
     "F1"        -> Just KF1
     "F2"        -> Just KF2
@@ -430,30 +384,19 @@ initUI path stref = do
     mainBuffer      <- G.textViewGetBuffer mainView
     mainInput       <- GB.builderGetObject builder G.castToEntry        "mainInput"
     statusKeyseq    <- GB.builderGetObject builder G.castToLabel        "statusKeyseq"
+    statusUser      <- GB.builderGetObject builder G.castToLabel        "statusUser"
     statusSystem    <- GB.builderGetObject builder G.castToLabel        "statusSystem"
-    hboxPrompt      <- GB.builderGetObject builder G.castToHBox         "hboxPrompt"
     promptLabel     <- GB.builderGetObject builder G.castToLabel        "promptLabel"
 
-{-
-    widgetWindow <- G.windowNew
-    widgetArea <- G.drawingAreaNew
-
-    G.set widgetWindow [ G.windowTypeHint := G.WindowTypeHintUtility ]
-    G.containerAdd widgetWindow widgetArea
-
-    G.widgetShowAll widgetWindow
-
-    widgetArea `on` G.sizeRequest $ return $ G.Requisition 200 200
-    -}
-
     let controls = ScreenControls
-            { ctlMainView       = mainView
+            { ctlBuilder        = builder
+            , ctlMainView       = mainView
             , ctlMainScroll     = mainScroll
             , ctlMainBuffer     = mainBuffer
             , ctlMainInput      = mainInput
             , ctlStatusKeyseq   = statusKeyseq
+            , ctlStatusUser     = statusUser
             , ctlStatusSystem   = statusSystem
-            , ctlHboxPrompt     = hboxPrompt
             , ctlPromptLabel    = promptLabel
             }
 
@@ -476,14 +419,6 @@ initUI path stref = do
         G.set tag [ G.textTagForeground := x ]
         G.textTagTableAdd tagTable tag
 
-    {-
-    window `on` G.entryActivate $ runScreen controls stref $ do
-        text <- liftIO $ G.get mainInput G.entryText
-        mb $ outputAString (setFg Yellow (toAttrString text))
-        mb $ sendString text
-        liftIO $ G.set mainInput [ G.entryText := "" ]
-        -}
-
     -- Key press handler
     mainInput `on` G.keyPressEvent $ do
         keyname <- G.eventKeyName
@@ -500,21 +435,6 @@ initUI path stref = do
         endIter <- liftIO $ G.textBufferGetEndIter mainBuffer
         liftIO $ G.textViewScrollToIter mainView endIter 0 Nothing
         return ()
-
-    {-
-    window `on` G.configureEvent $ do
-            liftIO $ runScreen controls stref $ do
-                (w, h) <- getViewSize
-                sendSocket $ telnegToBytes $ telnetNegNaws w h
-            return False
-    -}
-
-    {-
-    widgetArea `on` G.exposeEvent $ do
-        drawwin <- G.eventWindow
-        liftIO $ runScreen controls stref $ drawWidgets drawwin
-        return False
-        -}
 
     -- Quit when the window is closed
     window `on` G.deleteEvent $ liftIO G.mainQuit >> return False
@@ -538,14 +458,12 @@ updateTimer n = do
     updateWidgets
 
 -- | Run the screen
-execScreen :: MBConfig -> (MBState u) -> Screen u () -> IO ()
-execScreen conf initMBState action =
+execScreen :: String -> MBConfig -> (MBState u) -> Screen u () -> IO ()
+execScreen gladepath conf initMBState action =
     do
     G.initGUI
     stref <- newIORef $ mkScreenState conf initMBState
-    --gladepath <- getDataFileName "gui.glade"
-    --ctrls <- initUI gladepath stref
-    ctrls <- initUI "gui.glade" stref
+    ctrls <- initUI gladepath stref
     forkIO $ runTimer ctrls stref
     runScreen ctrls stref action
     st <- readIORef stref
@@ -617,28 +535,6 @@ prompt title f = do
 
 ------------------------------------------------------------------------------
 
-{-
-getCharSize :: Screen (Double, Double)
-getCharSize = do
-    ctls <- askControls
-    liftIO $ do
-             pc <- G.widgetGetPangoContext (ctlMainView ctls)
-             (item:[]) <- P.pangoItemize pc "W" []
-             glyph <- P.pangoShape item
-             ((P.PangoRectangle _ _ w h), _) <- P.glyphItemExtents glyph
-             return (w, h)
-        >>= return
-
-getViewSize :: Screen (Int, Int)
-getViewSize = do
-    ctls <- askControls
-    (cw, ch) <- getCharSize
-    --(G.Rectangle _ _ w h) <- liftIO $ G.textViewGetVisibleRect (ctlMainView ctls)
-    (G.Rectangle _ _ w h) <- liftIO $ G.widgetGetAllocation (ctlMainScroll ctls)
-    -- ATTENTION: division may fail!
-    return $ (w `div` (ceiling cw), h `div` (ceiling ch))
-    -}
-
 -- | Handle telnet negotiations
 handleTelneg :: TelnetNeg -> Screen u ()
 handleTelneg neg = case neg of
@@ -649,13 +545,6 @@ handleTelneg neg = case neg of
     TelnetNeg (Just CMD_EOR) Nothing [] -> do
         modify $ \st -> st { scrPrompt = "", scrMarkedPrompt = scrPrompt st }
         updatePrompt
-    {-
-    -- NAWS (defunct)
-    TelnetNeg (Just CMD_DO) (Just OPT_NAWS) [] -> do
-        sendSocket $ telnegToBytes $ TelnetNeg (Just CMD_WILL) (Just OPT_NAWS) []        
-        (w, h) <- getViewSize
-        sendSocket $ telnegToBytes $ telnetNegNaws w h
-    -}
     -- All other Telnegs are handled by the Core module
     _ ->
         mb $ processTelnet neg
@@ -664,66 +553,5 @@ handleTelneg neg = case neg of
 
 updateWidgets :: Screen u ()
 updateWidgets = do
-    windows <- gets scrWindows
-    forM_ windows $ \w ->
-        case w of
-            WidgetWindow win action -> liftIO $ G.widgetQueueDraw win
-            _ -> return ()
-
-drawWidgets :: G.DrawWindow -> G.Style -> MB u [UIWidget] -> Screen u ()
-drawWidgets win style widgets = do
-    widgets <- mb widgets
-
-    actions <- forM widgets $ \w -> do
-        case w of
-            UIWidgetText str -> return $ renderTextWidget style str
-            UIWidgetTable tab -> return $ renderTableWidget style tab
-
-    liftIO $ G.renderWithDrawable win $ do
-        C.translate 8.0 14.0
-        forM_ actions $ \a -> do
-            C.save
-            height <- a
-            C.restore
-            C.translate 0 $ height + 10.0
-
-renderTextWidget :: G.Style -> String -> C.Render Double
-renderTextWidget style str = do
-    fgColor <- liftIO $ G.styleGetForeground style G.StateNormal
-    G.setSourceColor fgColor
-    C.selectFontFace "monospace" C.FontSlantNormal C.FontWeightNormal
-    C.setFontSize 12.0
-
-    C.textPath str
-    C.fill
-
-    ext <- C.textExtents str
-    return $ C.textExtentsHeight ext
-
-renderTableWidget :: G.Style -> [[String]] -> C.Render Double
-renderTableWidget style tab = do
-    fgColor <- liftIO $ G.styleGetForeground style G.StateNormal
-    G.setSourceColor fgColor
-    C.selectFontFace "monospace" C.FontSlantNormal C.FontWeightNormal
-    C.setFontSize 12.0
-
-    forM_ (transpose $ rectify " " (maximum $ map length tab) tab) $ \col -> do
-        C.save
-        widths <- forM col $ \cell -> do
-            C.save
-            C.textPath cell
-            C.fill
-            C.restore
-            C.translate 0.0 12.0
-            ext <- C.textExtents cell
-            return $ C.textExtentsWidth ext
-        C.restore
-        C.translate (maximum widths + 5.0) 0.0
-
-    return $ (fromIntegral $ length tab) * 12.0
-  where
-    rectify elem len mat = map (fill elem len) mat
-    fill elem len l = l ++ (take (max 0 (len - length l)) $ repeat elem)
-
-drawMap :: G.DrawWindow -> Screen u ()
-drawMap win = return ()
+    updateHandler <- gets scrUpdateHandler
+    updateHandler
