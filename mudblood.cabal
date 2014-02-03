@@ -29,7 +29,7 @@ executable mudblood
     other-modules:      Paths_mudblood
     build-depends:      base, mtl, utf8-string, bytestring, monad-coroutine,
                         network, hint, containers, split, binary, MissingH,
-                        parsec, either, regex-base, regex-tdfa, array, sqlite,
+                        parsec, either, regex-base, regex-tdfa, array,
                         free, json, fgl, filepath, directory, lens, time, colour, has
     hs-source-dirs:     src
 
