@@ -90,7 +90,7 @@ newtype Screen u a = Screen (StateT (ScreenState u) IO a)
 data Event u = ReceiveEvent String
              | TelnetEvent TelnetNeg
              | CloseEvent
-             | KeyEvent Key
+             | KeyEvent Key [KeyMod]
              | FifoEvent String
              | TimeEvent Int
              | MBEvent (MB u ())
@@ -140,6 +140,13 @@ mapKey k = case k of
     V.KASCII c      -> Just $ KAscii c
     _               -> Nothing
 
+mapKeyMod :: V.Modifier -> KeyMod
+mapKeyMod m = case m of
+    V.MShift    -> MShift
+    V.MCtrl     -> MCtrl
+    V.MMeta     -> MMeta
+    V.MAlt      -> MAlt
+
 mapColor :: Color -> V.MaybeDefault V.Color
 mapColor c = case c of
     DefaultColor    -> V.Default
@@ -165,7 +172,7 @@ inputLoop v chan =
               vev <- V.next_event v
               case vev of
                 V.EvKey k mod   -> case mapKey k of
-                                    Just k' -> liftIO $ atomically $ writeTChan chan $ KeyEvent k'
+                                    Just k' -> liftIO $ atomically $ writeTChan chan $ KeyEvent k' (map mapKeyMod mod)
                                     Nothing -> return ()
                 _               -> return ()
 
@@ -265,7 +272,7 @@ screen =
                                    (p, _) <- mb $ process (scrPrompt st) chars defaultAttr -- TODO: where to save current attr?
                                    modify $ \st -> st { scrPrompt = p }
             CloseEvent          -> screenEcho "Connection closed"
-            KeyEvent k          -> handleKey k
+            KeyEvent k mod      -> handleKey k mod
             TelnetEvent neg     -> do
                                    handleTelneg neg
                                    --mb $ logger LogDebug $ show neg

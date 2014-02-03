@@ -1,5 +1,5 @@
 module Mudblood.Keys
-    ( Key (..)
+    ( Key (..), KeyMod (..)
     , parseKeys
     , KeyMenu (..)
     , emptyMenu, stepMenu, showMenu
@@ -17,6 +17,9 @@ data Key = KAscii Char
          | KPgUp | KPgDn
          | KUp | KDown | KLeft | KRight
          | KUndefined
+    deriving (Eq)
+
+data KeyMod = MShift | MCtrl | MMeta | MAlt
     deriving (Eq)
 
 instance Show Key where
