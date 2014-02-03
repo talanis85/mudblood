@@ -14,6 +14,8 @@ module Mudblood.Trigger
     , returnLine, returnSend, returnTime
     -- ** Kleisli arrow
     , (>=>)
+    -- ** Trigger combinators
+    , gag, keep, keep1
     -- * Common triggers
     , on
     -- ** Coloring
@@ -105,6 +107,18 @@ returnLine x = return [LineTEvent x]
 returnSend x = return [SendTEvent x]
 -- | Return a timer event
 returnTime x = return [TimeTEvent x]
+
+-- | Discard the result of a trigger
+gag :: (Monad m) => (a -> m b) -> (a -> m [c])
+gag a ev = a ev >> return []
+
+-- | Discard the result of a trigger and return its input as a list
+keep :: (Monad m) => (a -> m b) -> (a -> m [a])
+keep a ev = a ev >> return [ev]
+
+-- | Discard the result of a trigger and return its input
+keep1 :: (Monad m) => (a -> m b) -> (a -> m a)
+keep1 a ev = a ev >> return ev
 
 -- | Colorize an AttrString
 colorize :: (Monad m) => Color -> AttrString -> TriggerM m i y [TriggerEvent]
