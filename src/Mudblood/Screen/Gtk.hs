@@ -72,7 +72,7 @@ data ScreenState u = ScreenState {
     scrBindings :: Trie.Trie Key (Last (Screen u ())),
 
     scrMBState :: MBState u,
-    scrMBConfig :: MBConfig,
+    scrMBConfig :: MBConfig u,
 
     scrSocket :: Maybe TelnetSocket,
 
@@ -139,14 +139,14 @@ mb mb = do
     interpMB (Pure r) = return r
     interpMB (Free (MBFIO action g)) = liftIO action >>= interpMB . g
     interpMB (Free (MBFConnect h p x)) = connectScreen h p >> interpMB x
-    interpMB (Free (MBFLine l x)) = appendToMainBuffer l >> interpMB x
+    interpMB (Free (MBFLine Nothing l x)) = appendToMainBuffer l >> interpMB x
+    interpMB (Free (MBFLine (Just name) s x)) = appendToBuffer name s >> interpMB x
     interpMB (Free (MBFSend d x)) = sendSocket d >> interpMB x
     interpMB (Free (MBFQuit x)) = liftIO (G.mainQuit) >> interpMB x
     interpMB (Free (MBFUI a x)) = execUIAction a >> interpMB x
     --interpMB (Free (MBFDialog desc handler x)) = createDialogWindow desc handler >> interpMB x
     interpMB (Free (MBFDialog desc handler x)) = interpMB x
     interpMB (Free (MBFGetTime g)) = gets scrTime >>= interpMB . g
-    interpMB (Free (MBFToBuffer name s x)) = appendToBuffer name s >> interpMB x
 
 ------------------------------------------------------------------------------
 
@@ -162,7 +162,7 @@ connectScreen host port =
     sock <- liftIO . telnetConnect host port $ telnetRecvHandler $ telnetProc completeState
     case sock of
         Right sock' -> modify $ \s -> s { scrSocket = Just sock' }
-        Left err -> mb $ mbError err
+        Left err -> mb $ echoE err
   where
     telnetProc state ev = case ev of
         TelnetRawEvent s -> liftIO $ telnetReceiveProc state $ DataEvent $ UTF8.decode s
@@ -181,7 +181,6 @@ connectScreen host port =
             CloseEvent          -> mb $ echo "Connection closed"
             TelnetEvent neg     -> do
                                    handleTelneg neg
-                                   mb $ logger LogDebug $ show neg
         updateWidgets
 
 -- | Send a byte array to the socket (if existent)
@@ -458,7 +457,7 @@ updateTimer n = do
     updateWidgets
 
 -- | Run the screen
-execScreen :: String -> MBConfig -> (MBState u) -> Screen u () -> IO ()
+execScreen :: String -> MBConfig u -> MBState u -> Screen u () -> IO ()
 execScreen gladepath conf initMBState action =
     do
     G.initGUI
