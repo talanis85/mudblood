@@ -318,9 +318,12 @@ handleBufferKey buf k = case k of
     KEsc      -> Just $ bufferSetCompletionState False buf
     _         -> Nothing
 
-handleKey :: Key -> Screen u ()
-handleKey k =
+handleKey :: Key -> [KeyMod] -> Screen u ()
+handleKey k m =
     do
+
+    when ((k, m) == (KAscii 'c', [MCtrl])) $ modify $ \s -> s { scrQuit = True }
+
     st <- get
     case (scrMode st) of
         NormalMode -> do
