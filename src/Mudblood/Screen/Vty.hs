@@ -346,7 +346,7 @@ handleKey k m =
                                    modify $ \s -> s
                                         { scrNormalBuffer = bufferSetContent "" (scrNormalBuffer st)
                                         , scrPrompt = ""
-                                        , scrNormalHistory = Hist.rewind $ Hist.insert bufcont (scrNormalHistory s)
+                                        , scrNormalHistory = Hist.insert bufcont $ Hist.rewind $ scrNormalHistory s
                                         }
                     KPgUp       -> modify $ \s -> s { scrScroll = (scrScroll s + 20) }
                     KPgDn       -> modify $ \s -> s { scrScroll = max 0 (scrScroll s - 20) }
