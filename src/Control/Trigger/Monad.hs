@@ -5,6 +5,7 @@ module Control.Trigger.Monad
     , MaybeRequest (Yield, Replace, Fail)
     , yieldT, replaceT, failT, whileT
     , liftT, tryT
+    , (<||>)
     ) where
 
 import Control.Monad
@@ -23,6 +24,10 @@ instance (Monad m) => MonadPlus (TriggerM m y r) where
             Left (Yield x g) -> suspend $ Yield x g
             Left (Replace x g) -> suspend $ Replace x g
             Right v -> return v
+
+-- | Choice between two trigger functions.
+(<||>) :: (MonadPlus m) => (a -> m b) -> (a -> m b) -> (a -> m b)
+a <||> b = \x -> a x `mplus` b x
 
 data MaybeRequest req resp x = Yield req (resp -> x)
                              | Replace req (resp -> x)
