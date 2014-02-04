@@ -44,30 +44,30 @@ data TriggerEvent = LineTEvent AttrString   -- ^ Emitted when a line was receive
                   | CustomTEvent String     -- ^ User defined events
     deriving (Eq, Show)
 
-guardLine :: (Monad m) => TriggerEvent -> TriggerM m y r AttrString
+guardLine :: (MonadPlus m) => TriggerEvent -> m AttrString
 guardLine ev = case ev of
     LineTEvent s -> return s
-    _            -> failT
+    _            -> mzero
 
-guardSend :: (Monad m) => TriggerEvent -> TriggerM m y r String
+guardSend :: (MonadPlus m) => TriggerEvent -> m String
 guardSend ev = case ev of
     SendTEvent s -> return s
-    _            -> failT
+    _            -> mzero
 
-guardTime :: (Monad m) => TriggerEvent -> TriggerM m y r Int
+guardTime :: (MonadPlus m) => TriggerEvent -> m Int
 guardTime ev = case ev of
     TimeTEvent s -> return s
-    _            -> failT
+    _            -> mzero
 
-guardTelneg :: (Monad m) => TriggerEvent -> TriggerM m y r TelnetNeg
+guardTelneg :: (MonadPlus m) => TriggerEvent -> m TelnetNeg
 guardTelneg ev = case ev of
     TelnetTEvent s -> return s
-    _              -> failT
+    _              -> mzero
 
-guardGMCP :: (Monad m) => TriggerEvent -> TriggerM m y r GMCP
+guardGMCP :: (MonadPlus m) => TriggerEvent -> m GMCP
 guardGMCP ev = case ev of
     GMCPTEvent gmcp -> return gmcp
-    _ -> failT
+    _               -> mzero
 
 guardBlock :: (Monad m) => TriggerEvent -> TriggerM m [TriggerEvent] TriggerEvent [AttrString]
 guardBlock ev = readBlock [] ev
@@ -119,7 +119,7 @@ keep1 a ev = a ev >> return ev
 colorize :: (Monad m) => Color -> AttrString -> TriggerM m i y [TriggerEvent]
 colorize c x = returnLine $ setFg c x
 
-on :: (Monad m) => (a -> TriggerM m y r b) -> TriggerM m y r c -> a -> TriggerM m y r [a]
+on :: (Monad m) => (a -> m b) -> m c -> a -> m [a]
 on trig action ev = do
     trig ev
     action
