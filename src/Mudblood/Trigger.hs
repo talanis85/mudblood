@@ -6,7 +6,7 @@ module Mudblood.Trigger
     , TriggerEvent (..)
     -- * Trigger functions
     -- ** Guards
-    , guardT, guardLine, guardSend, guardTime, guardTelneg, guardGMCP
+    , guardLine, guardSend, guardTime, guardTelneg, guardGMCP
     , guardBlock, joinBlock
     -- ** Yielding
     , yieldLine, yieldSend, yieldTime
@@ -43,11 +43,6 @@ data TriggerEvent = LineTEvent AttrString   -- ^ Emitted when a line was receive
                   | NilTEvent               -- ^ Dummy event type
                   | CustomTEvent String     -- ^ User defined events
     deriving (Eq, Show)
-
--- | Fail if the condition is False.
-guardT :: (Monad m) => Bool -> TriggerM m y r ()
-guardT True  = return ()
-guardT False = failT
 
 guardLine :: (Monad m) => TriggerEvent -> TriggerM m y r AttrString
 guardLine ev = case ev of
