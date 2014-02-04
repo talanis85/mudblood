@@ -127,6 +127,19 @@ instance MBMonad (TriggerM (MB u) y r) u where
     putMap = liftT . putMap
     getTime = liftT getTime
 
+instance MBMonad (StateT s (TriggerM (MB u) y r)) u where
+    echoA = lift . echoA
+    echoAux name s = lift $ echoAux name s
+    send = lift . send
+    ui = lift . ui
+    io = lift . io
+    dialog desc handler = lift $ dialog desc handler
+    getUserData = lift getUserData
+    modifyUserData = lift . modifyUserData
+    getMap = lift getMap
+    putMap = lift . putMap
+    getTime = lift getTime
+
 --------------------------------------------------------------------------------------------------
 
 data MBState u = MBState
