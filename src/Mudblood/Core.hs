@@ -67,12 +67,12 @@ class (Monad m) => MBMonad m u | m -> u where
     echoA :: AttrString -> m ()
 
     echo :: String -> m ()
-    echo = echoA . toAttrString
+    echo = echoA . toAS
 
     echoAux :: String -> AttrString -> m ()
 
     echoE :: String -> m ()
-    echoE = echoA . (setFg Red) . toAttrString
+    echoE = echoA . (setFg Red) . toAS
 
     send :: (Sendable a) => a -> m ()
 
@@ -233,7 +233,7 @@ process pr str a =
   where
     lines' str = splitWhen (== '\n') str
     decodeFold cur (l, a) = let (cur', add) = processChars cur
-                                (line, attr) = decode cur' a
+                                (line, attr) = decodeAS cur' a
                             in ((LineTEvent line):(add ++ l), attr)
 
 -- | Handle certain special characters, like \a.

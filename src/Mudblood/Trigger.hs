@@ -82,7 +82,7 @@ joinBlock [] = mempty
 joinBlock [a] = a
 joinBlock (x:xs) = foldr joinBlock' x xs
     where
-        joinBlock' x a = a <> (toAttrString " ") <> x
+        joinBlock' x a = a <> (toAS " ") <> x
 
 -- | Yield a line event
 yieldLine :: (Monad m) => AttrString -> TriggerM m [TriggerEvent] r r

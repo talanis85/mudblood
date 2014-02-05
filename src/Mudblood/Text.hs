@@ -6,18 +6,16 @@ module Mudblood.Text
       Attr (attrStyle, attrFg, attrBg), AttrString
     , Style (StyleNormal, StyleBold, StyleUnderline)
     , Color (DefaultColor, Black, White, Cyan, Magenta, Blue, Yellow, Green, Red)
-    , StringClass (toString)
     , defaultAttr
     -- * Regexes
-    , attrMatch, attrMatch'
     , compileRegex, compileRegex', execRegex, execRegex'
-    , matchRegex, matchRegex'
+    , match, match', matchAS, matchAS'
     -- * Conversion to and from strings
-    , decode, toAttrString, fromAttrString
+    , decodeAS, toAS, fromAS
     -- * Misc transformations
     , (<++>)
-    , groupAttrString
-    , wrap, untab
+    , groupAS
+    , wrapAS, untabAS
     -- * Setting attributes
     , setFg, setBg, setStyle
     -- * Colors
@@ -34,8 +32,8 @@ import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language (haskellDef)
 
-import Text.Regex.TDFA
-import qualified Text.Regex.TDFA.String as Regex
+import qualified Text.Regex.TDFA as Regex
+import qualified Text.Regex.TDFA.String as RegexString
 
 import Debug.Trace
 
@@ -111,68 +109,39 @@ instance Monoid AttrString where
     mempty = AttrString []
     mappend (AttrString a) (AttrString b) = AttrString (a ++ b)
 
-mapAttrString f (AttrString s) = AttrString $ f s
-
-class StringClass a where
-    toString :: a -> String
-
-instance StringClass String where
-    toString str = str
-
-instance StringClass AttrString where
-    toString str = fromAttrString str
+mapAS :: ([(Char, Attr)] -> [(Char, Attr)]) -> AttrString -> AttrString
+mapAS f (AttrString s) = AttrString $ f s
 
 (<++>) :: AttrString -> AttrString -> AttrString
 (<++>) = mappend
 
 instance Show AttrString where
-    show (AttrString s) = map fst s
+    show = fromAS
 
-{-
-instance Extract AttrString where
-    empty = toAttrString ""
-    before i s = mapAttrString (take i) s
-    after i s = mapAttrString (drop i) s
-    extract w s = mapAttrString (take (snd w) . drop (fst w)) s
-
-instance RegexContext Regex AttrString [[String]] where
-    match r s = map (map fromAttrString) (match r s)
-    matchM r s = do
-        ret <- matchM r s
-        return $ map (map fromAttrString) ret
-
-instance RegexLike Regex AttrString where
-    matchOnce r s = matchOnce r (fromAttrString s)
-    matchAll r s = matchAll r (fromAttrString s)
--}
-
-compileRegex = Regex.compile defaultCompOpt defaultExecOpt
+compileRegex = RegexString.compile Regex.defaultCompOpt Regex.defaultExecOpt
 compileRegex' = either (const Nothing) Just . compileRegex
 
 execRegex r s =
-    case Regex.execute r s of
+    case RegexString.execute r s of
         Left _ -> []
         Right Nothing -> []
         Right (Just arr) -> map matches $ Array.elems arr
-  where matches (off, len) = extract (off, len) s
+  where matches (off, len) = Regex.extract (off, len) s
 
 execRegex' r s = not $ null $ execRegex r s
 
-matchRegex r = case compileRegex' r of
+match r = case compileRegex' r of
     Nothing -> const []
     Just re -> \s -> execRegex re s
 
-matchRegex' r = not . null . matchRegex r
+match' r = not . null . match r
 
-attrMatch :: (RegexMaker Regex CompOption ExecOption source, RegexContext Regex String target) => AttrString -> source -> target
-attrMatch a b = (fromAttrString a) =~ b
-
-attrMatch' :: (RegexMaker Regex CompOption ExecOption source, RegexContext Regex String target) => source -> AttrString -> target
-attrMatch' b = (=~ b) . fromAttrString
+matchAS r = match r . fromAS
+matchAS' r = match' r . fromAS
 
 -- | Decompose an AttrString into (string, attribute) pairs.
-groupAttrString :: AttrString -> [(String, Attr)]
-groupAttrString s = foldr foldFun [] (getAttrString s)
+groupAS :: AttrString -> [(String, Attr)]
+groupAS s = foldr foldFun [] (getAttrString s)
     where
         foldFun (x,a) [] = [([x],a)]
         foldFun (x,a) (([],_):ys) = ([x],a):ys
@@ -185,12 +154,12 @@ defaultAttr :: Attr
 defaultAttr = Attr StyleNormal DefaultColor DefaultColor
 
 -- | Convert a String to an AttrString
-toAttrString :: String -> AttrString
-toAttrString xs = AttrString $ map (\x -> (x, defaultAttr)) xs
+toAS :: String -> AttrString
+toAS xs = AttrString $ map (\x -> (x, defaultAttr)) xs
 
 -- | Convert an AttrString to a String
-fromAttrString :: AttrString -> String
-fromAttrString (AttrString xs) = map fst xs
+fromAS :: AttrString -> String
+fromAS (AttrString xs) = map fst xs
 
 -- | Set foreground color
 setFg :: Color -> AttrString -> AttrString
@@ -208,21 +177,21 @@ setStyle c (AttrString s) = AttrString $ map (setStyle' c) s
     where setStyle' c (x, a) = (x, withStyle c a)
 
 -- | Word wrap an AttrString
-wrap :: Int             -- ^ Line width
-     -> AttrString      -- ^ Input
-     -> [AttrString]    -- ^ Output
-wrap maxLen (AttrString line)
+wrapAS :: Int             -- ^ Line width
+       -> AttrString      -- ^ Input
+       -> [AttrString]    -- ^ Output
+wrapAS maxLen (AttrString line)
   | length line <= maxLen           = [AttrString line]
-  | any (isSpace . fst) beforeMax   = (AttrString beforeSpace) : (wrap maxLen $ AttrString (afterSpace ++ afterMax))
-  | otherwise                       = (AttrString beforeMax) : (wrap maxLen $ AttrString afterMax)
+  | any (isSpace . fst) beforeMax   = (AttrString beforeSpace) : (wrapAS maxLen $ AttrString (afterSpace ++ afterMax))
+  | otherwise                       = (AttrString beforeMax) : (wrapAS maxLen $ AttrString afterMax)
     where (beforeMax, afterMax) = splitAt maxLen line
           (beforeSpace, afterSpace) = reverseBreak (isSpace . fst) beforeMax
 
 -- | Convert tabs to spaces
-untab :: Int            -- ^ Tab width
-      -> AttrString     -- ^ Input
-      -> AttrString     -- ^ Output
-untab width str = AttrString $ untab' width 0 $ getAttrString str
+untabAS :: Int            -- ^ Tab width
+        -> AttrString     -- ^ Input
+        -> AttrString     -- ^ Output
+untabAS width = mapAS $ untab' width 0
     where untab' width n [] = []
           untab' width n (('\t', a):cs) = let addspaces = width - (n `mod` width)
                                           in (take addspaces $ repeat (' ', a)) ++ (untab' width (n + addspaces) cs)
@@ -234,12 +203,12 @@ reverseBreak f xs = (reverse before, reverse after)
 
 -- | Convert a string with ANSI sequences to an AttrString. Errors during ANSI parsing
 --   will be embedded in the resulting string.
-decode :: String             -- ^ The input string - may contain ANSI
-       -> Attr               -- ^ Initial attribute settings
-       -> (AttrString, Attr) -- ^ The resulting AttrString and the final attribute settings
-decode s a = case runParser ansiParser a "" s of
+decodeAS :: String             -- ^ The input string - may contain ANSI
+         -> Attr               -- ^ Initial attribute settings
+         -> (AttrString, Attr) -- ^ The resulting AttrString and the final attribute settings
+decodeAS s a = case runParser ansiParser a "" s of
     Right as -> as
-    Left err -> (toAttrString ("[ERROR:"++(show err)++"]"), a)
+    Left err -> (toAS ("[ERROR:"++(show err)++"]"), a)
 
 ------------------------------------------------------------------------------
 

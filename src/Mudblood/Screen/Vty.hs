@@ -286,7 +286,7 @@ appendLine :: AttrString -> Screen u ()
 appendLine line = modify $ \st -> st { scrLinebuffer = line : (scrLinebuffer st) }
 
 screenEcho :: String -> Screen u ()
-screenEcho str = appendLine (toAttrString str)
+screenEcho str = appendLine (toAS str)
 
 handleTelneg :: TelnetNeg -> Screen u ()
 handleTelneg neg = do
@@ -335,9 +335,9 @@ handleKey k m =
                                    let bufcont = bufferContent $ scrNormalBuffer st
 
                                    appendLine $
-                                      (toAttrString $ (scrMarkedPrompt st) ++ (scrPrompt st))
+                                      (toAS $ (scrMarkedPrompt st) ++ (scrPrompt st))
                                       `mappend`
-                                      (setFg Yellow $ toAttrString $ bufcont)
+                                      (setFg Yellow $ toAS $ bufcont)
 
                                    case bufcont of
                                       ('(':_) -> mb $ command bufcont
@@ -421,7 +421,7 @@ drawScreen =
 
     statusLines <- mb $ scrStatus scrst
 
-    let all_lines = concat $ map (reverse . wrap (w - 5)) $ scrLinebuffer scrst
+    let all_lines = concat $ map (reverse . wrapAS (w - 5)) $ scrLinebuffer scrst
     let lines = map (drawLine scrst) (reverse $ take (h-3) $ drop (scrScroll scrst) all_lines)
     let img_lines = if length lines < (h-3)
                         then mconcat $ (V.background_fill w (h - 3 - length lines)) : lines
@@ -527,7 +527,7 @@ drawMap :: Int -> Int -> Map -> V.Image
 drawMap w h m = mconcat $ map (V.string V.def_attr) $ mapDrawAscii w h ["base"] m
 
 drawLine :: ScreenState u -> AttrString -> V.Image
-drawLine s l = minImage $ V.horiz_cat $ map drawChunk (groupAttrString $ untab 8 l)
+drawLine s l = minImage $ V.horiz_cat $ map drawChunk (groupAS $ untabAS 8 l)
     where drawChunk (c, a) = V.string (V.Attr (mapStyle $ attrStyle a) (mapColor $ attrFg a) (mapColor $ attrBg a)) c
 
 drawPrompt :: ScreenState u -> V.Image

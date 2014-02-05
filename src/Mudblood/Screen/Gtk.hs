@@ -190,7 +190,7 @@ sendSocket dat =
     state <- get
     case (scrSocket state) of
          Just sock -> liftIO $ telnetSend sock dat
-         Nothing -> appendToMainBuffer (toAttrString "No socket")
+         Nothing -> appendToMainBuffer (toAS "No socket")
 
 -- | The screen main loop
 screen :: Screen u () -> Screen u ()
@@ -217,7 +217,7 @@ appendToMainBuffer astr = do
         Just promptMark' -> liftIO $ G.textBufferGetIterAtMark mainbuf promptMark'
     liftIO $ G.textBufferDelete mainbuf promptIter endIter
 
-    mapM_ (appendChunk mainbuf) (groupAttrString $ untab 8 astr)
+    mapM_ (appendChunk mainbuf) (groupAS $ untabAS 8 astr)
 
     endIter <- liftIO $ G.textBufferGetEndIter mainbuf
     liftIO $ G.textBufferInsert mainbuf endIter $ "\n"
@@ -254,7 +254,7 @@ appendToBuffer :: String -> AttrString -> Screen u ()
 appendToBuffer name str = do
     buf <- getNamedBuffer name
     endIter <- liftIO $ G.textBufferGetEndIter buf
-    mapM_ (appendChunk buf) (groupAttrString $ untab 8 str)
+    mapM_ (appendChunk buf) (groupAS $ untabAS 8 str)
     endIter <- liftIO $ G.textBufferGetEndIter buf
     liftIO $ G.textBufferInsert buf endIter $ "\n"
 
@@ -498,9 +498,9 @@ handleKey key = do
                                              case text of
                                                 cmd@('(':_) -> mb $ command cmd
                                                 _ -> do
-                                                     mb $ echoA $ (toAttrString $ (scrMarkedPrompt st) ++ (scrPrompt st))
+                                                     mb $ echoA $ (toAS $ (scrMarkedPrompt st) ++ (scrPrompt st))
                                                                   `mappend`
-                                                                  (setFg Yellow (toAttrString text))
+                                                                  (setFg Yellow (toAS text))
                                                      mb $ processSend text
                                              --liftIO $ G.set (ctlMainInput ctrls) [ G.entryText := "" ]
                                              liftIO $ G.editableSelectRegion (ctlMainInput ctrls) 0 100

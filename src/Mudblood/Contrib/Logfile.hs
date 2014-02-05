@@ -13,6 +13,6 @@ logfileTrigger filename = Volatile $ \ev -> do
   where
     logfileLoop h = keep (handleEvent h) >=> yieldT >=> logfileLoop h
     handleEvent h ev = case ev of
-        LineTEvent x -> io $ hPutStrLn h (fromAttrString x) >> hFlush h
+        LineTEvent x -> io $ hPutStrLn h (show x) >> hFlush h
         SendTEvent x -> io $ hPutStrLn h ("> " ++ x) >> hFlush h
         _ -> return ()

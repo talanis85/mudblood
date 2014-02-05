@@ -111,8 +111,8 @@ instance ValueClass Value where
     valueEq (StringValue a) (StringValue b) = Just $ BoolValue $ a == b
     valueEq (AttrStringValue a) (AttrStringValue b) = Just $ BoolValue $ a == b
     valueEq (AttrStringValue a) (AttrStringValue b) = Just $ AttrStringValue $ a `mappend` b
-    valueEq (AttrStringValue a) (StringValue b) = Just $ BoolValue $ (fromAttrString a) == b
-    valueEq (StringValue a) (AttrStringValue b) = Just $ BoolValue $ a == (fromAttrString b)
+    valueEq (AttrStringValue a) (StringValue b) = Just $ BoolValue $ (fromAS a) == b
+    valueEq (StringValue a) (AttrStringValue b) = Just $ BoolValue $ a == (fromAS b)
     valueEq _ _ = Nothing
 
     valueOrd (IntValue a) (IntValue b) = Just $ BoolValue $ a >= b
