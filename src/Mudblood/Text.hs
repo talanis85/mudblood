@@ -73,7 +73,7 @@ colorToName c = case c of
     Yellow -> "yellow"
     Green -> "green"
     Red -> "red"
-    DefaultColor -> ""
+    DefaultColor -> "default"
 
 nameToColor :: String -> Maybe Color
 nameToColor s = case s of
@@ -85,6 +85,7 @@ nameToColor s = case s of
     "yellow" -> Just Yellow
     "green" -> Just Green
     "red" -> Just Red
+    "default" -> Just DefaultColor
     _ -> Nothing
 
 data Attr = Attr {
