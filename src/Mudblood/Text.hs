@@ -7,9 +7,6 @@ module Mudblood.Text
     , Style (StyleNormal, StyleBold, StyleUnderline)
     , Color (DefaultColor, Black, White, Cyan, Magenta, Blue, Yellow, Green, Red)
     , defaultAttr
-    -- * Regexes
-    , compileRegex, compileRegex', execRegex, execRegex'
-    , match, match', matchAS, matchAS'
     -- * Conversion to and from strings
     , decodeAS, toAS, fromAS
     -- * Misc transformations
@@ -25,15 +22,11 @@ module Mudblood.Text
 import Data.Char
 import Data.Monoid
 import Data.Either
-import qualified Data.Array as Array
 import Control.Monad
 
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language (haskellDef)
-
-import qualified Text.Regex.TDFA as Regex
-import qualified Text.Regex.TDFA.String as RegexString
 
 import Debug.Trace
 
@@ -118,27 +111,6 @@ mapAS f (AttrString s) = AttrString $ f s
 
 instance Show AttrString where
     show = fromAS
-
-compileRegex = RegexString.compile Regex.defaultCompOpt Regex.defaultExecOpt
-compileRegex' = either (const Nothing) Just . compileRegex
-
-execRegex r s =
-    case RegexString.execute r s of
-        Left _ -> []
-        Right Nothing -> []
-        Right (Just arr) -> map matches $ Array.elems arr
-  where matches (off, len) = Regex.extract (off, len) s
-
-execRegex' r s = not $ null $ execRegex r s
-
-match r = case compileRegex' r of
-    Nothing -> const []
-    Just re -> \s -> execRegex re s
-
-match' r = not . null . match r
-
-matchAS r = match r . fromAS
-matchAS' r = match' r . fromAS
 
 -- | Decompose an AttrString into (string, attribute) pairs.
 groupAS :: AttrString -> [(String, Attr)]
