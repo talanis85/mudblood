@@ -12,8 +12,6 @@ module Mudblood.Trigger
     , yieldLine, yieldSend, yieldTime
     -- ** Returning
     , returnLine, returnSend, returnTime
-    -- ** Kleisli arrow
-    , (>=>)
     -- ** Trigger combinators
     , gag, keep, keep1
     -- * Common triggers

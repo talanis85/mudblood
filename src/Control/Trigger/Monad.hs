@@ -6,6 +6,8 @@ module Control.Trigger.Monad
     , yieldT, replaceT, failT, whileT
     , liftT, tryT
     , (<||>)
+    -- * Re-exports from Control.Monad
+    , (>=>), guard
     ) where
 
 import Control.Monad
