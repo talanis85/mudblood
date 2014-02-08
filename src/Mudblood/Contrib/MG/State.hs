@@ -13,6 +13,8 @@ module Mudblood.Contrib.MG.State
     , mgStatLP, mgStatMLP, mgStatKP, mgStatMKP, mgStatVO
     , mgStatFR, mgStatG, mgStatB, mgStatT, mgStatF
     , mgShieldName
+
+    , Has
     ) where
 
 import Data.Has
