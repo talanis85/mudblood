@@ -329,6 +329,7 @@ execUIAction action = case action of
                                case tag of
                                     Nothing -> return ()
                                     Just tag' -> liftIO $ G.set tag' [ G.textTagForegroundGdk := colourToGdk val' ]
+    _ -> return ()
 
 ------------------------------------------------------------------------------
 
