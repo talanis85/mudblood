@@ -31,6 +31,12 @@
                     <property name="right_margin">5</property>
                     <property name="buffer">mainBuffer</property>
                     <property name="accepts_tab">False</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="mainView-atkobject">
+                        <property name="AtkObject::accessible-name" translatable="yes">Main View</property>
+                        <property name="AtkObject::accessible-description" translatable="yes">Displays text received from the game</property>
+                      </object>
+                    </child>
                   </object>
                 </child>
               </object>
@@ -82,6 +88,15 @@
                         <property name="secondary_icon_activatable">False</property>
                         <property name="primary_icon_sensitive">True</property>
                         <property name="secondary_icon_sensitive">True</property>
+                        <accessibility>
+                          <action action_name="activate" description="Send text"/>
+                        </accessibility>
+                        <child internal-child="accessible">
+                          <object class="AtkObject" id="mainInput-atkobject">
+                            <property name="AtkObject::accessible-name" translatable="yes">Main input</property>
+                            <property name="AtkObject::accessible-description" translatable="yes">Text to send to the game</property>
+                          </object>
+                        </child>
                       </object>
                       <packing>
                         <property name="expand">True</property>
