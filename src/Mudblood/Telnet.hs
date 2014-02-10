@@ -264,10 +264,13 @@ telnetRecv :: TelnetIO (Either String [TelnetBlock])
 telnetRecv =
     do
     state <- get'
-    d <- liftIO (recv (tnSocket state) 1024)
-    if B.null d then return $ Left "EOF"
-                else let (st, blocks) = tnFeed (tnState state) $ B.unpack d
-                     in put' (state { tnState = st }) >> return (Right blocks)
+    d <- liftIO $ try $ recv (tnSocket state) 1024 :: TelnetIO (Either IOException B.ByteString)
+    case d of
+        Left err -> return $ Left "Socket error"
+        Right d ->
+            if B.null d then return $ Left "EOF"
+                        else let (st, blocks) = tnFeed (tnState state) $ B.unpack d
+                             in put' (state { tnState = st }) >> return (Right blocks)
   where get' = TelnetIO get
         put' s = TelnetIO $ put s
 
