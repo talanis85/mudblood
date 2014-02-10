@@ -47,7 +47,6 @@
                 <child>
                   <object class="GtkLabel" id="promptLabel">
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">label</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
@@ -95,7 +94,6 @@
               <object class="GtkLabel" id="statusKeyseq">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">label</property>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -107,7 +105,6 @@
               <object class="GtkLabel" id="statusUser">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">label</property>
               </object>
               <packing>
                 <property name="expand">True</property>
@@ -119,7 +116,6 @@
               <object class="GtkLabel" id="statusSystem">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">label</property>
               </object>
               <packing>
                 <property name="expand">False</property>
