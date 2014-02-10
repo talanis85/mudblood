@@ -15,17 +15,9 @@ Flag Debug
     description:    Enable debugging
     default:        False
 
-Flag Gtk
-    description:    Include GTK frontend
-    default:        False
-
-Flag Vty
-    description:    Include Vty frontend
-    default:        True
-
-executable mudblood
-    main-is:            Main.hs
-    ghc-options:        -O1 -threaded -auto-all -caf-all -rtsopts -with-rtsopts=-N
+executable mudblood-mg-gtk
+    main-is:            Main-MG-Gtk.hs
+    ghc-options:        -O1 -threaded -rtsopts -with-rtsopts=-N
     other-modules:      Paths_mudblood
     build-depends:      base, mtl, utf8-string, bytestring, monad-coroutine,
                         network, hint, containers, split, binary, MissingH,
@@ -36,8 +28,16 @@ executable mudblood
     if os(windows)
         ghc-options:    -optl-mwindows
 
-    if flag(vty)
-        build-depends:  unix, terminfo, ansi-terminal, vty ==5.0.0, stm, process
+    build-depends:  gtk, pango, cairo
 
-    if flag(gtk)
-        build-depends:  gtk, pango, cairo
+executable mudblood-mg-vty
+    main-is:            Main-MG-Vty.hs
+    ghc-options:        -O1 -threaded -rtsopts -with-rtsopts=-N
+    other-modules:      Paths_mudblood
+    build-depends:      base, mtl, utf8-string, bytestring, monad-coroutine,
+                        network, hint, containers, split, binary, MissingH,
+                        parsec, either, regex-base, regex-tdfa, array,
+                        free, json, fgl, filepath, directory, lens, time, colour, has
+    hs-source-dirs:     src
+
+    build-depends:  unix, terminfo, ansi-terminal, vty ==5.0.0, stm, process
