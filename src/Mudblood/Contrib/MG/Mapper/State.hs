@@ -6,7 +6,7 @@ module Mudblood.Contrib.MG.Mapper.State
     , mkMGMapperState
     -- * State lenses
     , mapperRoomHash, mapperLastRoom, mapperOverlay, mapperWalkState
-    , mapperLastInput, mapperMode
+    , mapperMode
     ) where
 
 import Control.Lens
@@ -22,7 +22,6 @@ data MGMapperState = MGMapperState
     , _mapperLastRoom    :: Int
     , _mapperOverlay     :: [String]
     , _mapperWalkState   :: Int
-    , _mapperLastInput   :: String
     , _mapperMode        :: MGMapperMode
     }
 
@@ -41,9 +40,6 @@ mapperOverlay   = lens _mapperOverlay (\s v -> s { _mapperOverlay = v })
 mapperWalkState :: Lens' MGMapperState Int
 mapperWalkState = lens _mapperWalkState (\s v -> s { _mapperWalkState = v })
 
-mapperLastInput :: Lens' MGMapperState String
-mapperLastInput = lens _mapperLastInput (\s v -> s { _mapperLastInput = v })
-
 mapperMode      :: Lens' MGMapperState MGMapperMode
 mapperMode      = lens _mapperMode (\s v -> s { _mapperMode = v })
 
@@ -52,6 +48,5 @@ mkMGMapperState = MGMapperState
     , _mapperLastRoom      = 0
     , _mapperOverlay       = ["base"]
     , _mapperWalkState     = 0
-    , _mapperLastInput     = ""
     , _mapperMode          = ModeFixed
     }

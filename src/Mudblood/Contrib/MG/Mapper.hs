@@ -150,16 +150,18 @@ mapperWidgets = do
 roomTriggers :: (Has R_Mapper u) => Maybe (MBTriggerFlow u)
                                  -> Maybe (MBTriggerFlow u)
                                  -> MBTriggerFlow u
-roomTriggers o i = Volatile $ statefulT (o, i) $ roomTriggers'
+roomTriggers o i = Volatile $ statefulT (o, i, "") $ roomTriggers'
     where
         roomTriggers' :: (Has R_Mapper u)
                       => TriggerEvent
-                      -> StateT (Maybe (MBTriggerFlow u), Maybe (MBTriggerFlow u)) (MBTrigger u) [TriggerEvent]
+                      -> StateT (Maybe (MBTriggerFlow u), Maybe (MBTriggerFlow u), String) (MBTrigger u) [TriggerEvent]
         roomTriggers' ev = do
-            (roomOutTriggers, roomInTriggers) <- get
+            (roomOutTriggers, roomInTriggers, _) <- get
             case ev of
                 SendTEvent s -> do
-                    modifyU R_Mapper $ mapperLastInput .~ s
+                    -- Memorize last sent line for auto mode
+                    modify $ \(a,b,c) -> (a,b,s)
+
                     m <- getMap
                     ms <- getU R_Mapper
                     let over = ms ^. mapperOverlay
@@ -188,7 +190,7 @@ roomTriggers o i = Volatile $ statefulT (o, i) $ roomTriggers'
                                        Just ts -> lift $ liftT $ runTriggerFlow ts ev
                                        Nothing -> return ([ev], Nothing)
 
-                                    modify $ \(l, r) -> (tf, r)
+                                    modify $ \(a,b,c) -> (tf,b,c)
 
                                     wegFrei <- lift $ roomCheckBlockers m cur s
                                     if not (wegFrei == [])
@@ -202,13 +204,14 @@ roomTriggers o i = Volatile $ statefulT (o, i) $ roomTriggers'
                 GMCPTEvent gmcp ->
                     case gmcpModule gmcp of
                         "MG.room.info" -> do
+                            (_, _, lastline) <- get
+
                             m <- getMap
                             ms <- getU R_Mapper
 
                             let over = ms ^. mapperOverlay
                                 mode = ms ^. mapperMode
                                 cur = (mapCurrentId m)
-                                lastline = ms ^. mapperLastInput
                                 curhash = lookupUserValue "hash" $ mapGetRoomData cur $ mapGraph m
                                 newhash = fromMaybe "" $ getStringField "id" gmcp
                                 newroom = mapFindRoomByIndex "hash" (UserValueString newhash) m
@@ -259,7 +262,7 @@ roomTriggers o i = Volatile $ statefulT (o, i) $ roomTriggers'
                             (ret, tf) <- case roomInTriggers of
                                Just ts -> lift $ liftT $ runTriggerFlow ts ev
                                Nothing -> return ([ev], Nothing)
-                            modify $ \(l, r) -> (l, tf)
+                            modify $ \(a,b,c) -> (a,tf,c)
                             return ret
                         _ -> mzero
                 _ -> mzero
