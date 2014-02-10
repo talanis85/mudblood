@@ -31,13 +31,14 @@ executable mudblood-mg-gtk
     build-depends:  gtk, pango, cairo
 
 executable mudblood-mg-vty
-    main-is:            Main-MG-Vty.hs
-    ghc-options:        -O1 -threaded -rtsopts -with-rtsopts=-N
-    other-modules:      Paths_mudblood
-    build-depends:      base, mtl, utf8-string, bytestring, monad-coroutine,
-                        network, hint, containers, split, binary, MissingH,
-                        parsec, either, regex-base, regex-tdfa, array,
-                        free, json, fgl, filepath, directory, lens, time, colour, has
-    hs-source-dirs:     src
+    if !os(windows)
+        main-is:            Main-MG-Vty.hs
+        ghc-options:        -O1 -threaded -rtsopts -with-rtsopts=-N
+        other-modules:      Paths_mudblood
+        build-depends:      base, mtl, utf8-string, bytestring, monad-coroutine,
+                            network, hint, containers, split, binary, MissingH,
+                            parsec, either, regex-base, regex-tdfa, array,
+                            free, json, fgl, filepath, directory, lens, time, colour, has
+        hs-source-dirs:     src
 
-    build-depends:  unix, terminfo, ansi-terminal, vty ==5.0.0, stm, process
+        build-depends:  unix, terminfo, ansi-terminal, vty ==5.0.0, stm, process
