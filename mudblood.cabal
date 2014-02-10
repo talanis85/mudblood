@@ -31,7 +31,12 @@ executable mudblood-mg-gtk
     build-depends:  gtk, pango, cairo
 
 executable mudblood-mg-vty
-    if !os(windows)
+    hs-source-dirs:     src
+
+    if os(windows)
+        main-is:            Main-Dummy.hs
+        build-depends:      base
+    else
         main-is:            Main-MG-Vty.hs
         ghc-options:        -O1 -threaded -rtsopts -with-rtsopts=-N
         other-modules:      Paths_mudblood
@@ -39,6 +44,5 @@ executable mudblood-mg-vty
                             network, hint, containers, split, binary, MissingH,
                             parsec, either, regex-base, regex-tdfa, array,
                             free, json, fgl, filepath, directory, lens, time, colour, has
-        hs-source-dirs:     src
 
         build-depends:  unix, terminfo, ansi-terminal, vty ==5.0.0, stm, process
