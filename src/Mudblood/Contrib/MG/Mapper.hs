@@ -27,6 +27,9 @@ import Control.Monad hiding (forM_)
 import Data.Foldable (forM_)
 import Control.Lens
 
+import Control.Monad.Trans
+import Control.Monad.State hiding (forM_)
+
 import Data.GMCP
 import Mudblood
 import Mudblood.Contrib.MG.State
@@ -147,13 +150,13 @@ mapperWidgets = do
 roomTriggers :: (Has R_Mapper u) => Maybe (MBTriggerFlow u)
                                  -> Maybe (MBTriggerFlow u)
                                  -> MBTriggerFlow u
-roomTriggers o i = Volatile $ roomTriggers' o i
+roomTriggers o i = Volatile $ statefulT (o, i) $ roomTriggers'
     where
-        roomTriggers' :: (Has R_Mapper u) => Maybe (MBTriggerFlow u)
-                                          -> Maybe (MBTriggerFlow u)
-                                          -> TriggerEvent
-                                          -> MBTrigger u [TriggerEvent]
-        roomTriggers' roomOutTriggers roomInTriggers ev =
+        roomTriggers' :: (Has R_Mapper u)
+                      => TriggerEvent
+                      -> StateT (Maybe (MBTriggerFlow u), Maybe (MBTriggerFlow u)) (MBTrigger u) [TriggerEvent]
+        roomTriggers' ev = do
+            (roomOutTriggers, roomInTriggers) <- get
             case ev of
                 SendTEvent s -> do
                     modifyU R_Mapper $ mapperLastInput .~ s
@@ -164,35 +167,38 @@ roomTriggers o i = Volatile $ roomTriggers' o i
                         cur = (mapCurrentId m)
                         next = mapFindAdjacentRoom cur s (mapGraph $ mgPrepareMap over m)
                     if mode == ModeOff
-                        then failT
+                        then mzero
                         else case next of
                                 Nothing -> case (mode, lookup s standardExits) of
                                     (ModeManual, Just opp) ->
                                         case mapAddRoom (mapGraph m) of
                                                 Nothing -> do
                                                     echo "Konnte Raum nicht erstellen."
-                                                    yieldT [ev] >>= roomTriggers' roomOutTriggers roomInTriggers
+                                                    return [ev]
                                                 Just (newm, newroom) -> do
                                                     modifyMap $ mapModifyCurrentId (const newroom) .
                                                                 mapModifyGraph (mapAddExit newroom opp cur "base") .
                                                                 mapModifyGraph (mapAddExit cur s newroom "base") .
                                                                 mapModifyGraph (const newm)
-                                                    yieldT [ev] >>= roomTriggers' roomOutTriggers roomInTriggers
-                                    _ -> failT
+                                                    return [ev]
+                                    _ -> mzero
                                 Just n -> do
                                     let before = roomActionsBeforeExit m cur s
                                     (ret, tf) <- case roomOutTriggers of
-                                       Just ts -> liftT $ runTriggerFlow ts ev
+                                       Just ts -> lift $ liftT $ runTriggerFlow ts ev
                                        Nothing -> return ([ev], Nothing)
-                                    wegFrei <- roomCheckBlockers m cur s
+
+                                    modify $ \(l, r) -> (tf, r)
+
+                                    wegFrei <- lift $ roomCheckBlockers m cur s
                                     if not (wegFrei == [])
                                        then do
                                             modifyU R_Mapper $ mapperWalkState .~ -1
                                             echo $ "BLOCKER: " ++ (show wegFrei)
-                                            yieldT [] >>= roomTriggers' tf roomInTriggers
+                                            return []
                                        else do
                                             modifyMap $ mapModifyCurrentId $ const n
-                                            yieldT (before ++ ret) >>= roomTriggers' tf roomInTriggers
+                                            return $ before ++ ret
                 GMCPTEvent gmcp ->
                     case gmcpModule gmcp of
                         "MG.room.info" -> do
@@ -207,7 +213,7 @@ roomTriggers o i = Volatile $ roomTriggers' o i
                                 newhash = fromMaybe "" $ getStringField "id" gmcp
                                 newroom = mapFindRoomByIndex "hash" (UserValueString newhash) m
 
-                            when (mode == ModeOff) failT
+                            when (mode == ModeOff) mzero
 
                             modifyU R_Mapper $ mapperRoomHash .~ newhash
 
@@ -251,8 +257,9 @@ roomTriggers o i = Volatile $ roomTriggers' o i
                                                (mapFindRoomByIndex "hash" (UserValueString newhash) m)
 
                             (ret, tf) <- case roomInTriggers of
-                               Just ts -> liftT $ runTriggerFlow ts ev
+                               Just ts -> lift $ liftT $ runTriggerFlow ts ev
                                Nothing -> return ([ev], Nothing)
-                            yieldT ret >>= roomTriggers' roomOutTriggers tf
-                        _ -> failT
-                _ -> failT
+                            modify $ \(l, r) -> (l, tf)
+                            return ret
+                        _ -> mzero
+                _ -> mzero
