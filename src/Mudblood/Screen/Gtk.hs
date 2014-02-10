@@ -6,6 +6,7 @@ module Mudblood.Screen.Gtk
     , screen
     , mb
     , bind
+    , menu
     , prompt
     , setStatus
     , askControls
@@ -70,6 +71,7 @@ data ScreenState u = ScreenState {
     scrStatus :: MB u String,
 
     scrBindings :: Trie.Trie Key (Last (Screen u ())),
+    scrMenu :: Maybe (String, KeyMenu Key (Screen u ())),
 
     scrMBState :: MBState u,
     scrMBConfig :: MBConfig u,
@@ -91,6 +93,7 @@ mkScreenState conf initMBState = ScreenState {
     scrMarkedPrompt = "",
     scrNormalKeybuffer = [],
     scrBindings = Trie.empty,
+    scrMenu = Nothing,
     scrMBConfig = conf,
     scrMBState = initMBState,
     scrSocket = Nothing,
@@ -113,6 +116,8 @@ data ScreenControls = ScreenControls
     , ctlStatusUser     :: G.Label
     , ctlStatusSystem   :: G.Label
     , ctlPromptLabel    :: G.Label
+    , ctlListMenu       :: G.ListStore String
+    , ctlTreeMenu       :: G.TreeView
     }
 
 newtype Screen u a = Screen (ReaderT (IORef (ScreenState u), ScreenControls) IO a)
@@ -387,6 +392,15 @@ initUI path stref = do
     statusUser      <- GB.builderGetObject builder G.castToLabel        "statusUser"
     statusSystem    <- GB.builderGetObject builder G.castToLabel        "statusSystem"
     promptLabel     <- GB.builderGetObject builder G.castToLabel        "promptLabel"
+    treeMenu        <- GB.builderGetObject builder G.castToTreeView     "treeMenu"
+
+    listMenu <- G.listStoreNew []
+    G.treeViewSetModel treeMenu listMenu
+    colText <- G.treeViewColumnNew
+    cellText <- G.cellRendererTextNew
+    G.treeViewColumnPackStart colText cellText True
+    G.cellLayoutSetAttributes colText cellText listMenu (\row -> [ G.cellText := row ])
+    G.treeViewAppendColumn treeMenu colText
 
     let controls = ScreenControls
             { ctlBuilder        = builder
@@ -398,6 +412,8 @@ initUI path stref = do
             , ctlStatusUser     = statusUser
             , ctlStatusSystem   = statusSystem
             , ctlPromptLabel    = promptLabel
+            , ctlListMenu       = listMenu
+            , ctlTreeMenu       = treeMenu
             }
 
     monoFont <- P.fontDescriptionFromString "monospace"
@@ -509,20 +525,55 @@ handleKey key = do
                                              return True
                                    _ -> return False
 
+handleMenu :: Key -> Screen u Bool
+handleMenu k = do
+    st <- get
+    ctls <- askControls
+    case (scrMenu st) of
+        Nothing -> return False
+        Just (_, menu) ->
+            case stepMenu k menu of
+                Just (desc, KeyAction action) -> do
+                    liftIO $ G.widgetHide (ctlTreeMenu ctls)
+                    action
+                    modify (\s -> s { scrMenu = Nothing })
+                    return True
+                Just (desc, KeyMenu m) -> do
+                    liftIO $ G.listStoreClear (ctlListMenu ctls)
+                    liftIO $ forM_ (showMenu (KeyMenu m)) $ \(k,d) -> G.listStoreAppend (ctlListMenu ctls) $ show k ++ ": " ++ d
+                    modify (\s -> s { scrMenu = Just (desc, KeyMenu m) })
+                    return True
+                Nothing -> do
+                    liftIO $ G.widgetHide (ctlTreeMenu ctls)
+                    modify (\s -> s { scrMenu = Nothing })
+                    return False
+
 handleKeybinding :: Key -> Screen u Bool
 handleKeybinding k = do
-    st <- get
-    let kb = (scrNormalKeybuffer st) ++ [k]
-    if Trie.isPrefix (scrBindings st) kb
-        then do
-             case Trie.lookup (scrBindings st) kb of
-                    Last Nothing -> modify (\s -> s { scrNormalKeybuffer = kb })
-                    Last (Just ac) -> ac >> modify (\s -> s { scrNormalKeybuffer = [] })
-             return True
-        else modify (\s -> s { scrNormalKeybuffer = [] }) >> return False
+    didMenu <- handleMenu k
+    if didMenu
+        then return True
+        else do
+            st <- get
+            let kb = (scrNormalKeybuffer st) ++ [k]
+            if Trie.isPrefix (scrBindings st) kb
+                then do
+                     case Trie.lookup (scrBindings st) kb of
+                            Last Nothing -> modify (\s -> s { scrNormalKeybuffer = kb })
+                            Last (Just ac) -> ac >> modify (\s -> s { scrNormalKeybuffer = [] })
+                     return True
+                else modify (\s -> s { scrNormalKeybuffer = [] }) >> return False
 
 bind :: [Key] -> Screen u () -> Screen u ()
 bind keys ac = modify $ \s -> s { scrBindings = Trie.insert keys (Last $ Just ac) (scrBindings s) }
+
+menu :: String -> KeyMenu Key (Screen u ()) -> Screen u ()
+menu desc m = do
+    ctls <- askControls
+    liftIO $ G.listStoreClear (ctlListMenu ctls)
+    liftIO $ forM_ (showMenu m) $ \(k,d) -> G.listStoreAppend (ctlListMenu ctls) $ show k ++ ": " ++ d
+    liftIO $ G.widgetShow (ctlTreeMenu ctls)
+    modify $ \s -> s { scrMenu = Just (desc, m) }
 
 ------------------------------------------------------------------------------
 
