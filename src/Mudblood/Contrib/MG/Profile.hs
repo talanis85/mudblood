@@ -11,11 +11,15 @@ import Mudblood
 data MGProfile = MGProfile
     { profChar      :: Maybe String
     , profPassword  :: Maybe String
+    , profLogfile   :: Maybe FilePath
+    , profMap       :: Maybe FilePath
     }
 
 mkMGProfile = MGProfile
     { profChar      = Nothing
     , profPassword  = Nothing
+    , profLogfile   = Nothing
+    , profMap       = Nothing
     }
 
 readProfile :: String -> Either String MGProfile
@@ -34,6 +38,8 @@ pSetting :: Parser (MGProfile -> MGProfile)
 pSetting = choice
     [ pStringSetting "char" >>= \x -> return $ \p -> p { profChar = Just x }
     , pStringSetting "password" >>= \x -> return $ \p -> p { profPassword = Just x }
+    , pStringSetting "logfile" >>= \x -> return $ \p -> p { profLogfile = Just x }
+    , pStringSetting "map" >>= \x -> return $ \p -> p { profMap = Just x }
     ]
 
 pStringSetting :: String -> Parser String
