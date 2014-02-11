@@ -1,6 +1,7 @@
 module Mudblood.Contrib.MG.Profile
     ( MGProfile (..)
     , readProfile
+    , mkMGProfile
     ) where
 
 import Text.ParserCombinators.Parsec
@@ -8,13 +9,13 @@ import Text.ParserCombinators.Parsec
 import Mudblood
 
 data MGProfile = MGProfile
-    { profChar      :: String
-    , profPassword  :: String
+    { profChar      :: Maybe String
+    , profPassword  :: Maybe String
     }
 
 mkMGProfile = MGProfile
-    { profChar      = ""
-    , profPassword  = ""
+    { profChar      = Nothing
+    , profPassword  = Nothing
     }
 
 readProfile :: String -> Either String MGProfile
@@ -31,8 +32,8 @@ pFile = do
 
 pSetting :: Parser (MGProfile -> MGProfile)
 pSetting = choice
-    [ pStringSetting "char" >>= \x -> return $ \p -> p { profChar = x }
-    , pStringSetting "password" >>= \x -> return $ \p -> p { profPassword = x }
+    [ pStringSetting "char" >>= \x -> return $ \p -> p { profChar = Just x }
+    , pStringSetting "password" >>= \x -> return $ \p -> p { profPassword = Just x }
     ]
 
 pStringSetting :: String -> Parser String
