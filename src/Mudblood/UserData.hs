@@ -1,12 +1,14 @@
 module Mudblood.UserData
-    ( UserData
+    ( UserData, UserValue (..)
     , lookupUserValue
     , userValueToInt, userValueFromInt
     , userValueToString, userValueFromString
-    , userValueToStrinArray, userValueFromStringArray
+    , userValueToStringArray, userValueFromStringArray
     ) where
 
 import qualified Data.Map as M
+import Data.List
+import Data.Maybe
 
 type UserData = M.Map String UserValue
 
