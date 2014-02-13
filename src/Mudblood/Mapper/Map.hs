@@ -45,6 +45,8 @@ import Control.Monad
 import Data.Graph.Inductive hiding (Gr)
 import Data.Graph.Inductive.PatriciaTree
 
+import Mudblood.UserData
+
 -----------------------------------------------------------------------------
 -- DATA DEFINITIONS
 -----------------------------------------------------------------------------
@@ -181,22 +183,6 @@ instance JSON JSUserData where
 -- USER DATA
 ------------------------------------------------------------------------------
 
-type UserData = M.Map String UserValue
-
-data UserValue = UserValueNull
-               | UserValueBool Bool
-               | UserValueRational Rational
-               | UserValueString String
-               | UserValueArray [UserValue]
-    deriving (Eq, Ord)
-
-instance Show UserValue where
-    show UserValueNull = "<null>"
-    show (UserValueBool v) = show v
-    show (UserValueRational v) = show v
-    show (UserValueString v) = v
-    show (UserValueArray v) = concat $ intersperse "," (map show v)
-
 toUserValue JSNull = UserValueNull
 toUserValue (JSBool v) = UserValueBool v
 toUserValue (JSRational _ v) = UserValueRational v
@@ -209,29 +195,6 @@ fromUserValue (UserValueBool v) = JSBool v
 fromUserValue (UserValueRational v) = JSRational True v
 fromUserValue (UserValueString v) = JSString $ toJSString v
 fromUserValue (UserValueArray v) = JSArray $ map fromUserValue v
-
-lookupUserValue :: String -> UserData -> UserValue
-lookupUserValue = M.findWithDefault UserValueNull
-
-userValueToInt :: UserValue -> Maybe Int
-userValueToInt (UserValueRational v) = Just $ round v
-userValueToInt _ = Nothing
-
-userValueFromInt :: Int -> UserValue
-userValueFromInt = UserValueRational . fromIntegral
-
-userValueToString :: UserValue -> Maybe String
-userValueToString (UserValueString v) = Just v
-userValueToString _ = Nothing
-
-userValueFromString :: String -> UserValue
-userValueFromString = UserValueString
-
-userValueToStringArray :: UserValue -> Maybe [String]
-userValueToStringArray (UserValueArray a) = Just $ mapMaybe userValueToString a
-
-userValueFromStringArray :: [String] -> UserValue
-userValueFromStringArray = UserValueArray . map UserValueString
 
 ------------------------------------------------------------------------------
 -- TRANSFORMS AND QUERIES
