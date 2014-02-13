@@ -13,7 +13,7 @@ module Mudblood.Trigger
     -- ** Returning
     , returnLine, returnSend, returnTime
     -- ** Trigger combinators
-    , gag, keep, keep1
+    , gag, keep, keep1, pass
     -- * Common triggers
     , on
     -- ** Coloring
@@ -112,6 +112,9 @@ keep a ev = a ev >> return [ev]
 -- | Discard the result of a trigger and return its input
 keep1 :: (Monad m) => (a -> m b) -> (a -> m a)
 keep1 a ev = a ev >> return ev
+
+pass :: (Monad m) => m () -> a -> m a
+pass m x = m >> return x
 
 -- | Colorize an AttrString
 colorize :: (Monad m) => Color -> AttrString -> TriggerM m i y [TriggerEvent]
