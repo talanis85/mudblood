@@ -62,16 +62,16 @@ fitnessMap = map f
     where f (r,v) = (matchAS' (r ++ "\\.$"), v)
 
 -- | A trigger that appends percent values after fitness descriptions
-quantizeFitness :: MBTriggerFlow u
-quantizeFitness = Permanent $ guardLine >=> \x ->
+quantizeFitness :: TriggerEvent -> MBTrigger u [TriggerEvent]
+quantizeFitness = guardLine >=> \x ->
     let res = listToMaybe $ catMaybes $ map (\(r,v) -> if r x then Just v else Nothing) fitnessMap
     in case res of
         Nothing -> returnLine x
         Just n  -> returnLine $ x <> (toAS $ " (" ++ (show n) ++ "%)")
 
 -- | A colorizer for combat messages
-colorizeCombat :: Color -> Color -> MBTriggerFlow u
-colorizeCombat attackColor defendColor = Permanent $ guardLine >=> \x ->
+colorizeCombat :: Color -> Color -> TriggerEvent -> MBTrigger u [TriggerEvent]
+colorizeCombat attackColor defendColor = guardLine >=> \x ->
     let attackResult = foldMap (check x) attackMap
         defenseResult = foldMap (check x) defenseMap
     in case getFirst attackResult of
