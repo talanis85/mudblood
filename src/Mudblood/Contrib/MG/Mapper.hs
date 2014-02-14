@@ -147,14 +147,14 @@ mapperWidgets = do
 
 ------------------------------------------------------------------------------
 
-roomTriggers :: (Has R_Mapper u) => Maybe (MBTriggerFlow u)
-                                 -> Maybe (MBTriggerFlow u)
+roomTriggers :: (Has R_Mapper u) => MBTriggerFlow u
+                                 -> MBTriggerFlow u
                                  -> MBTriggerFlow u
 roomTriggers o i = Volatile $ statefulT (o, i, "") $ roomTriggers'
     where
         roomTriggers' :: (Has R_Mapper u)
                       => TriggerEvent
-                      -> StateT (Maybe (MBTriggerFlow u), Maybe (MBTriggerFlow u), String) (MBTrigger u) [TriggerEvent]
+                      -> StateT (MBTriggerFlow u, MBTriggerFlow u, String) (MBTrigger u) [TriggerEvent]
         roomTriggers' ev = do
             (roomOutTriggers, roomInTriggers, _) <- get
             case ev of
@@ -186,9 +186,7 @@ roomTriggers o i = Volatile $ statefulT (o, i, "") $ roomTriggers'
                                     _ -> mzero
                                 Just n -> do
                                     let before = roomActionsBeforeExit m cur s
-                                    (ret, tf) <- case roomOutTriggers of
-                                       Just ts -> lift $ liftT $ runTriggerFlow ts ev
-                                       Nothing -> return ([ev], Nothing)
+                                    (ret, tf) <- lift $ liftT $ runTriggerFlow roomOutTriggers ev
 
                                     modify $ \(a,b,c) -> (tf,b,c)
 
@@ -259,9 +257,7 @@ roomTriggers o i = Volatile $ statefulT (o, i, "") $ roomTriggers'
                                                (modifyMap . mapModifyCurrentId . const)
                                                (mapFindRoomByIndex "hash" (UserValueString newhash) m)
 
-                            (ret, tf) <- case roomInTriggers of
-                               Just ts -> lift $ liftT $ runTriggerFlow ts ev
-                               Nothing -> return ([ev], Nothing)
+                            (ret, tf) <- lift $ liftT $ runTriggerFlow roomInTriggers ev
                             modify $ \(a,b,c) -> (a,tf,c)
                             return ret
                         _ -> mzero

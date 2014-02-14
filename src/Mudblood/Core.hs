@@ -145,13 +145,13 @@ instance MBMonad (StateT s (TriggerM (MB u) y r)) u where
 data MBState u = MBState
     { mbLinebuffer      :: [AttrString]
     , mbLog             :: [String]
-    , mbTrigger         :: Maybe (MBTriggerFlow u)
+    , mbTrigger         :: MBTriggerFlow u
     , mbUserData        :: u
     , mbMap             :: Map
 }
 
 -- | Create a new MBState.
-mkMBState :: Maybe (MBTriggerFlow u)            -- ^ Triggers
+mkMBState :: MBTriggerFlow u                    -- ^ Triggers
           -> u                                  -- ^ User data
           -> MBState u
 
@@ -271,12 +271,9 @@ feedTrigger :: TriggerEvent -> MB u ()
 feedTrigger ev =
     do
     s <- get
-    case (mbTrigger s) of
-        Nothing -> finishTEvent ev
-        Just t -> do
-                  (res, t') <- runTriggerFlow t ev
-                  modify $ \x -> x { mbTrigger = t' }
-                  mapM_ finishTEvent res
+    (res, t') <- runTriggerFlow (mbTrigger s) ev
+    modify $ \x -> x { mbTrigger = t' }
+    mapM_ finishTEvent res
 
 -- | This is called for each event that comes out of the trigger chain.
 finishTEvent :: TriggerEvent -> MB u ()
@@ -312,14 +309,12 @@ gmcpHello supports =
     ]
 
 -- | Modify the global TriggerFlow
-modifyTriggers :: (Maybe (MBTriggerFlow u) -> Maybe (MBTriggerFlow u)) -> MB u ()
+modifyTriggers :: (MBTriggerFlow u -> MBTriggerFlow u) -> MB u ()
 modifyTriggers f = modify $ \s -> s { mbTrigger = f (mbTrigger s) }
 
 -- | Add a one-shot trigger to the trigger chain.
 trigger :: (TriggerEvent -> MBTrigger u [TriggerEvent]) -> MB u ()
-trigger trig = modifyTriggers $ \ts -> case ts of
-        Nothing -> Just $ Volatile trig
-        Just ts' -> Just $ (Volatile trig) :>>: ts'
+trigger trig = modifyTriggers $ flip (<>) (Volatile trig)
 
 -- | Add a one-shot trigger and execute it immediately. I.e. switch context from
 --   MB to MBTrigger.
