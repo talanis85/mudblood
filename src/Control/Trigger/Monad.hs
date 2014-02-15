@@ -5,7 +5,7 @@ module Control.Trigger.Monad
     , MaybeRequest (Yield, Replace, Fail)
     , yieldT, replaceT, failT, whileT
     , liftT, tryT
-    , (<||>)
+    , (<||>), choiceT
     -- * Re-exports from Control.Monad
     , (>=>), guard
     ) where
@@ -30,6 +30,10 @@ instance (Monad m) => MonadPlus (TriggerM m y r) where
 -- | Choice between two trigger functions.
 (<||>) :: (MonadPlus m) => (a -> m b) -> (a -> m b) -> (a -> m b)
 a <||> b = \x -> a x `mplus` b x
+
+-- | Choice between a list of trigger functions.
+choiceT :: (MonadPlus m) => [a -> m b] -> (a -> m b)
+choiceT = foldr (<||>) (const mzero)
 
 data MaybeRequest req resp x = Yield req (resp -> x)
                              | Replace req (resp -> x)
