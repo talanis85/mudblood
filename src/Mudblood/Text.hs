@@ -13,6 +13,7 @@ module Mudblood.Text
     , (<++>)
     , groupAS
     , wrapAS, untabAS
+    , linesAS
     -- * Setting attributes
     , setFg, setBg, setStyle
     -- * Colors
@@ -23,6 +24,7 @@ import Data.Char
 import Data.Monoid
 import Data.Either
 import Control.Monad
+import Data.List.Split
 
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
@@ -169,6 +171,9 @@ untabAS width = mapAS $ untab' width 0
           untab' width n (('\t', a):cs) = let addspaces = width - (n `mod` width)
                                           in (take addspaces $ repeat (' ', a)) ++ (untab' width (n + addspaces) cs)
           untab' width n ((c, a):cs) = (c, a) : (untab' width (n+1) cs)
+
+linesAS :: AttrString -> [AttrString]
+linesAS (AttrString as) = map AttrString $ splitWhen ((== '\n') . fst) as
 
 reverseBreak :: (a -> Bool) -> [a] -> ([a], [a])
 reverseBreak f xs = (reverse before, reverse after)
