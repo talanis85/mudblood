@@ -8,6 +8,7 @@ module Mudblood.Core
     , MBState (mbLinebuffer, mbUserData), mkMBState
     , MBConfig (..), mkMBConfig
     , LogSeverity (LogDebug, LogInfo, LogWarning, LogError)
+    , StackTrace
     -- * The MBF Functor
     , MBF (..)
     -- * MB primitives
@@ -20,9 +21,12 @@ module Mudblood.Core
               )
     -- * Triggers
     , MBTrigger, MBTriggerFlow
+    -- * Error handling
+    , catchError, throwError, strMsg, noMsg, stackError, justError, maybeError, eitherError, stackTrace, mapLeft
     ) where
 
 import Data.Word
+import Data.Maybe
 import Data.List.Split
 
 import Control.Applicative
@@ -32,6 +36,7 @@ import Control.Monad.Trans
 import Control.Monad.Reader
 import Control.Monad.Writer
 import Control.Monad.Free
+import Control.Monad.Error
 
 import Language.DLisp.Core
 import Mudblood.Language
@@ -164,11 +169,11 @@ mkMBState triggers user = MBState
     }
 
 data MBConfig u = MBConfig
-    { confCommandHandler :: String -> MB u (Maybe String)
+    { confCommandHandler :: String -> MB u ()
     }
 
 mkMBConfig = MBConfig
-    { confCommandHandler    = const $ return Nothing
+    { confCommandHandler    = const $ return ()
     }
 
 data MBF u o = forall a. MBFIO (IO a) (a -> o)
@@ -192,12 +197,52 @@ instance Functor (MBF u) where
 
 --------------------------------------------------------------------------------------------------
 
-newtype MB u a = MB (ReaderT (MBConfig u) (StateT (MBState u) (Free (MBF u))) a)
-    deriving (Monad, MonadState (MBState u), MonadReader (MBConfig u), MonadFree (MBF u), Functor, Applicative)
+newtype MB u a = MB (ReaderT (MBConfig u) (StateT (MBState u) (ErrorT StackTrace (Free (MBF u)))) a)
+    deriving ( Monad, MonadState (MBState u), MonadReader (MBConfig u)
+             , MonadError StackTrace, MonadFree (MBF u), Functor, Applicative )
 
--- | Run the MB monad.
-runMB :: MBConfig u -> MBState u -> MB u a -> Free (MBF u) (a, MBState u)
-runMB conf st (MB mb) = runStateT (runReaderT mb conf) st
+runMB :: MBConfig u -> MBState u -> MB u a -> Free (MBF u) (Either StackTrace (a, MBState u))
+runMB conf st (MB mb) = runErrorT (runStateT (runReaderT mb conf) st)
+
+--------------------------------------------------------------------------------------------------
+
+-- ERROR HANDLING
+
+newtype StackTrace = StackTrace [(String, String)]
+    deriving (Monoid)
+
+instance Error StackTrace where
+    noMsg = StackTrace [("", "")]
+    strMsg str = StackTrace [("", str)]
+
+instance Show StackTrace where
+    show (StackTrace l) = unlines $ map (\(a,b) -> "[" ++ a ++ "] " ++ b) l
+
+stackTrace :: String -> String -> StackTrace
+stackTrace subsys msg = StackTrace [(subsys, msg)]
+
+stackError :: (MonadError e m, Error e, Monoid e) => e -> m a -> m a
+stackError e m = catchError m $ \e' -> throwError $ e <> e'
+
+justError :: (MonadError e m, Error e, Show a) => Maybe a -> m ()
+justError m = case m of
+    Just err -> throwError $ strMsg $ show err
+    Nothing -> return ()
+
+maybeError :: (MonadError e m, Error e) => e -> Maybe a -> m a
+maybeError err m = case m of
+    Just x -> return x
+    Nothing -> throwError err
+
+eitherError :: (MonadError e m, Error e) => Either e a -> m a
+eitherError e = case e of
+    Left err -> throwError err
+    Right x -> return x
+
+mapLeft :: (a -> b) -> Either a c -> Either b c
+mapLeft f e = case e of
+    Left x -> Left $ f x
+    Right x -> Right x
 
 --------------------------------------------------------------------------------------------------
 
@@ -205,10 +250,7 @@ runMB conf st (MB mb) = runStateT (runReaderT mb conf) st
 command :: String -> MB u ()
 command c = do
     conf <- ask
-    ret <- confCommandHandler conf c
-    case ret of
-        Nothing -> return ()
-        Just err -> echoE err
+    stackError (stackTrace "core" "Error executing command") $ confCommandHandler conf c
 
 -- | Run commands from a string
 commands :: String -> MB u ()
@@ -233,7 +275,7 @@ process pr str a =
   where
     lines' str = splitWhen (== '\n') str
     decodeFold cur (l, a) = let (cur', add) = processChars cur
-                                (line, attr) = decodeAS cur' a
+                                (line, attr) = fromMaybe (toAS ("[ERROR]" ++ cur'), a) (decodeAS cur' a)
                             in ((LineTEvent line):(add ++ l), attr)
 
 -- | Handle certain special characters, like \a.
@@ -257,7 +299,7 @@ processTelnet neg = case neg of
     -- GMCP
     TelnetNeg (Just CMD_SB) (Just OPT_GMCP) dat ->
         case parseGMCP $ UTF8.decode dat of
-            Nothing -> echoE "Received invalid GMCP"
+            Nothing -> throwError $ stackTrace "core" "Received invalid GMCP"
             Just gmcp -> feedTrigger $ GMCPTEvent gmcp
     -- Else: trigger it
     _ -> feedTrigger $ TelnetTEvent neg

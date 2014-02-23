@@ -179,14 +179,14 @@ reverseBreak :: (a -> Bool) -> [a] -> ([a], [a])
 reverseBreak f xs = (reverse before, reverse after)
   where (after, before) = break f $ reverse xs
 
--- | Convert a string with ANSI sequences to an AttrString. Errors during ANSI parsing
---   will be embedded in the resulting string.
-decodeAS :: String             -- ^ The input string - may contain ANSI
-         -> Attr               -- ^ Initial attribute settings
-         -> (AttrString, Attr) -- ^ The resulting AttrString and the final attribute settings
+-- | Convert a string with ANSI sequences to an AttrString.
+decodeAS :: String                      -- ^ The input string - may contain ANSI
+         -> Attr                        -- ^ Initial attribute settings
+         -> Maybe (AttrString, Attr)    -- ^ The resulting AttrString and the final attribute settings
+                                        --   or Nothing on error.
 decodeAS s a = case runParser ansiParser a "" s of
-    Right as -> as
-    Left err -> (toAS ("[ERROR:"++(show err)++"]"), a)
+    Right as -> Just as
+    Left err -> Nothing
 
 ------------------------------------------------------------------------------
 

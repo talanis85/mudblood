@@ -4,7 +4,7 @@ module Mudblood.Screen.Gtk
     ( execScreen
     , Screen (..), ScreenState (..)
     , screen
-    , mb
+    , mb, mb_
     , bind
     , menu
     , prompt
@@ -121,7 +121,7 @@ data ScreenControls = ScreenControls
     }
 
 newtype Screen u a = Screen (ReaderT (IORef (ScreenState u), ScreenControls) IO a)
-    deriving (Monad, MonadIO, MonadReader (IORef (ScreenState u), ScreenControls))
+    deriving (Functor, Monad, MonadIO, MonadReader (IORef (ScreenState u), ScreenControls))
 
 instance MonadState (ScreenState u) (Screen u) where
     get   = Screen (ask >>= liftIO . readIORef . fst)
@@ -134,12 +134,17 @@ runScreen ctrls stref (Screen s) = runReaderT s (stref, ctrls)
 
 ------------------------------------------------------------------------------
 
-mb :: MB u a -> Screen u a
+mb :: MB u a -> Screen u (Maybe a)
 mb mb = do
     st <- get
-    (a, s) <- interpMB $ runMB (scrMBConfig st) (scrMBState st) mb
-    modify $ \st -> st { scrMBState = s }
-    return a
+    ret <- interpMB $ runMB (scrMBConfig st) (scrMBState st) mb
+    case ret of
+        Right (a, s) -> do
+            modify $ \st -> st { scrMBState = s }
+            return $ Just a
+        Left err -> do
+            appendToMainBuffer $ setFg Red $ toAS $ show err
+            return Nothing
   where
     interpMB (Pure r) = return r
     interpMB (Free (MBFIO action g)) = liftIO action >>= interpMB . g
@@ -152,6 +157,10 @@ mb mb = do
     --interpMB (Free (MBFDialog desc handler x)) = createDialogWindow desc handler >> interpMB x
     interpMB (Free (MBFDialog desc handler x)) = interpMB x
     interpMB (Free (MBFGetTime g)) = gets scrTime >>= interpMB . g
+
+mb_ = void . mb
+
+showError = appendToMainBuffer . setFg Red . toAS
 
 ------------------------------------------------------------------------------
 
@@ -167,7 +176,7 @@ connectScreen host port =
     sock <- liftIO . telnetConnect host port $ telnetRecvHandler $ telnetProc completeState
     case sock of
         Right sock' -> modify $ \s -> s { scrSocket = Just sock' }
-        Left err -> mb $ echoE err
+        Left err -> showError err
   where
     telnetProc state ev = case ev of
         TelnetRawEvent s -> liftIO $ telnetReceiveProc state $ DataEvent $ UTF8.decode s
@@ -180,10 +189,13 @@ connectScreen host port =
     telnetReceive ev = do
         st <- get
         case ev of
-            DataEvent chars  -> do (p, _) <- mb $ process (scrPrompt st) chars defaultAttr -- TODO: where to save current attr?
-                                   modify $ \st -> st { scrPrompt = p }
-                                   updatePrompt
-            CloseEvent          -> mb $ echo "Connection closed"
+            DataEvent chars  -> do ret <- mb $ process (scrPrompt st) chars defaultAttr -- TODO: where to save current attr?
+                                   case ret of
+                                      Just (p, _) -> do
+                                        modify $ \st -> st { scrPrompt = p }
+                                        updatePrompt
+                                      Nothing -> return ()
+            CloseEvent          -> showError "Connection closed"
             TelnetEvent neg     -> do
                                    handleTelneg neg
         updateWidgets
@@ -303,9 +315,9 @@ updatePrompt = do
 
 execUIAction :: UIAction (MB u) -> Screen u ()
 execUIAction action = case action of
-    UIPrompt title handler -> prompt title (mb . handler)
+    UIPrompt title handler -> prompt title (mb_ . handler)
     UISetCompletion comp -> return () -- TODO
-    UIBind keystring action -> bind keystring (mb $ action)
+    UIBind keystring action -> bind keystring (mb_ $ action)
     UIUpdateWindow name -> return () --updateWindow name
     UIUpdateMap map -> do
         ctls <- askControls
@@ -591,14 +603,14 @@ handleTelneg :: TelnetNeg -> Screen u ()
 handleTelneg neg = case neg of
     -- WILL EOR
     TelnetNeg (Just CMD_WILL) (Just OPT_EOR) [] ->
-        mb $ send $ TelnetNeg (Just CMD_DO) (Just OPT_EOR) []        
+        mb_ $ send $ TelnetNeg (Just CMD_DO) (Just OPT_EOR) []        
     -- EOR
     TelnetNeg (Just CMD_EOR) Nothing [] -> do
         modify $ \st -> st { scrPrompt = "", scrMarkedPrompt = scrPrompt st }
         updatePrompt
     -- All other Telnegs are handled by the Core module
     _ ->
-        mb $ processTelnet neg
+        mb_ $ processTelnet neg
 
 ------------------------------------------------------------------------------
 
