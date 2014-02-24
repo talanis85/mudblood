@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, MultiParamTypeClasses, BangPatterns #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, MultiParamTypeClasses, BangPatterns, FlexibleInstances #-}
 
 module Mudblood.Screen.Vty
     ( execScreen
@@ -42,6 +42,8 @@ import Mudblood.Keys
 import Mudblood.Text
 import Mudblood.UI
 import Mudblood.Mapper.Map
+import qualified Mudblood.Screen as SC
+import Mudblood.Screen (mb_)
 
 import Data.Time.Clock.POSIX
 
@@ -87,6 +89,13 @@ data ScreenState u = ScreenState {
 newtype Screen u a = Screen (StateT (ScreenState u) IO a)
     deriving (Functor, Monad, MonadIO, MonadState (ScreenState u))
 
+instance SC.ScreenClass u (Screen u) where
+    mb = mb
+    prompt = prompt
+    bind = bind
+    setStatus = setStatus
+    menu = menu
+
 data Event u = ReceiveEvent String
              | TelnetEvent TelnetNeg
              | CloseEvent
@@ -95,12 +104,17 @@ data Event u = ReceiveEvent String
              | TimeEvent Int
              | MBEvent (MB u ())
 
-mb :: MB u a -> Screen u a
+mb :: MB u a -> Screen u (Maybe a)
 mb mb = do
     st <- get
-    (a, s) <- interpMB $ runMB (scrMBConfig st) (scrMBState st) mb
-    modify $ \st -> st { scrMBState = s }
-    return a
+    ret <- interpMB $ runMB (scrMBConfig st) (scrMBState st) mb
+    case ret of
+        Left err -> do
+            screenEcho $ show err
+            return Nothing
+        Right (a,s) -> do
+            modify $ \st -> st { scrMBState = s }
+            return $ Just a
   where
     interpMB (Pure r) = return r
     interpMB (Free (MBFIO action g))            = liftIO action >>= interpMB . g
@@ -223,7 +237,7 @@ connectScreen host port =
     sock <- liftIO . telnetConnect host port $ telnetRecvHandler $ telnetProc (scrEventChan state)
     case sock of
         Right sock' -> modify $ \s -> s { scrSocket = Just sock' }
-        Left err -> mb $ echoE err
+        Left err -> mb_ $ echoE err
   where
     telnetProc chan ev = case ev of
         TelnetRawEvent s -> liftIO $ telnetReceiveProc chan $ ReceiveEvent $ UTF8.decode s
@@ -269,8 +283,10 @@ screen =
         st <- get
         case ev of
             ReceiveEvent chars  -> do
-                                   (p, _) <- mb $ process (scrPrompt st) chars defaultAttr -- TODO: where to save current attr?
-                                   modify $ \st -> st { scrPrompt = p }
+                                   ret <- mb $ process (scrPrompt st) chars defaultAttr -- TODO: where to save current attr?
+                                   case ret of
+                                      Nothing -> return ()
+                                      Just (p, _) -> modify $ \st -> st { scrPrompt = p }
             CloseEvent          -> screenEcho "Connection closed"
             KeyEvent k mod      -> handleKey k mod
             TelnetEvent neg     -> do
@@ -278,8 +294,8 @@ screen =
                                    --mb $ logger LogDebug $ show neg
             TimeEvent t         -> do
                                    modify $ \st -> st { scrTime = t }
-                                   mb $ processTime t
-            MBEvent action      -> mb action
+                                   mb_ $ processTime t
+            MBEvent action      -> mb_ action
             _                   -> return ()
 
 appendLine :: AttrString -> Screen u ()
@@ -295,9 +311,9 @@ handleTelneg neg = do
             modify $ \st -> st { scrPrompt = "", scrMarkedPrompt = scrPrompt st }
             --screenEcho $ show neg
         TelnetNeg (Just CMD_WILL) (Just OPT_EOR) [] ->
-            mb $ send $ TelnetNeg (Just CMD_DO) (Just OPT_EOR) []        
+            mb_ $ send $ TelnetNeg (Just CMD_DO) (Just OPT_EOR) []        
         _ -> return ()
-    mb $ processTelnet neg
+    mb_ $ processTelnet neg
 
 execUI :: UIAction (MB u) -> Screen u ()
 execUI (UISetCompletion comp) = modify $ \s -> s { scrNormalBuffer = bufferSetCompletion comp (scrNormalBuffer s) }
@@ -411,6 +427,7 @@ bind keys ac = modify $ \s -> s { scrBindings = Trie.insert keys (Last $ Just ac
 menu :: String -> KeyMenu Key (Screen u ()) -> Screen u ()
 menu desc m = modify $ \s -> s { scrMenu = Just (desc, m) }
 
+-- | Omg, this is soooo ugly... :(
 drawScreen :: Screen u ()
 drawScreen =
     do
@@ -427,7 +444,7 @@ drawScreen =
                         then mconcat $ (V.background_fill w (h - 3 - length lines)) : lines
                         else mconcat lines
     let img_prompt = drawPrompt scrst
-    let img_status = drawStatus scrst statusLines
+    let img_status = drawStatus scrst (fromMaybe "" statusLines)
 
     let cursor = case (scrMode scrst) of
             NormalMode ->
@@ -471,11 +488,13 @@ drawScreen =
 
     let sidebar_w = 35
 
-    let img_map = V.translate_x (w - sidebar_w) $ drawMap sidebar_w 25 m
+    let img_map = case m of
+            Just m -> V.translate_x (w - sidebar_w) $ drawMap sidebar_w 25 m
+            Nothing -> V.background_fill sidebar_w 25
 
     widgets <- gets scrWidgets >>= mb
 
-    let img_widgets = V.translate (w - sidebar_w) 30 $ drawWidgets widgets
+    let img_widgets = V.translate (w - sidebar_w) 30 $ fromMaybe (V.background_fill 30 1) $ fmap drawWidgets widgets
 
     liftIO $ V.update (scrVty scrst) (V.Picture
         cursor

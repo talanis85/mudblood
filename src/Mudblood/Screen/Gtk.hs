@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, MultiParamTypeClasses, BangPatterns #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, MultiParamTypeClasses, BangPatterns, FlexibleInstances #-}
 
 module Mudblood.Screen.Gtk
     ( execScreen
@@ -50,6 +50,9 @@ import Mudblood.UI
 import Mudblood.Mapper
 
 import Paths_mudblood
+
+import qualified Mudblood.Screen as SC
+import Mudblood.Screen (mb_)
 
 -- | Socket Events
 data SocketEvent = DataEvent String
@@ -132,6 +135,13 @@ askControls = ask >>= return . snd
 
 runScreen ctrls stref (Screen s) = runReaderT s (stref, ctrls)
 
+instance SC.ScreenClass u (Screen u) where
+    mb = mb
+    prompt = prompt
+    bind = bind
+    setStatus = setStatus
+    menu = menu
+
 ------------------------------------------------------------------------------
 
 mb :: MB u a -> Screen u (Maybe a)
@@ -157,8 +167,6 @@ mb mb = do
     --interpMB (Free (MBFDialog desc handler x)) = createDialogWindow desc handler >> interpMB x
     interpMB (Free (MBFDialog desc handler x)) = interpMB x
     interpMB (Free (MBFGetTime g)) = gets scrTime >>= interpMB . g
-
-mb_ = void . mb
 
 showError = appendToMainBuffer . setFg Red . toAS
 
