@@ -50,10 +50,10 @@ triggerGmcpStat g =
             in modifyU R_Common statfun
         _ -> failT
 
-triggerGmcpCommunication :: GMCP -> MBTrigger u AttrString
+triggerGmcpCommunication :: GMCP -> MBTrigger u String
 triggerGmcpCommunication g =
     case gmcpModule g of
-        "comm.channel" -> return $ toAS $ rstrip $ fromMaybe "" $ getStringField "msg" g
+        "comm.channel" -> return $ rstrip $ fromMaybe "" $ getStringField "msg" g
         _ -> failT
   where
     rstrip = reverse . dropWhile isSpace . reverse
