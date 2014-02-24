@@ -19,6 +19,8 @@ loopT startt nextt = startt >=> yieldT >=> loop
 
 triggerCommunication :: (AttrString -> MBTrigger u [TriggerEvent]) -> TriggerEvent -> MBTrigger u [TriggerEvent]
 triggerCommunication f =
+    (guardGMCP >=> triggerGmcpCommunication >=> f . toAS)
+    <||>
     (loopT (guardLine >=> (keep1 $ regexAS "^\\[[^]]+:[^]]+]") >=> f)
            (guardLine >=> (keep1 $ regexAS "^ ") >=> f))
     <||>

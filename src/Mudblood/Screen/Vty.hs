@@ -438,7 +438,7 @@ drawScreen =
 
     statusLines <- mb $ scrStatus scrst
 
-    let all_lines = concat $ map (reverse . wrapAS (w - 5)) $ scrLinebuffer scrst
+    let all_lines = concat $ map (reverse . wrapAS (w - 5)) $ concat $ map (reverse . linesAS) $ scrLinebuffer scrst
     let lines = map (drawLine scrst) (reverse $ take (h-3) $ drop (scrScroll scrst) all_lines)
     let img_lines = if length lines < (h-3)
                         then mconcat $ (V.background_fill w (h - 3 - length lines)) : lines
