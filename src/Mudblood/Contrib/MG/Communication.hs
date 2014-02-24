@@ -10,23 +10,17 @@ import Mudblood
 import Mudblood.Contrib.Regex
 import Mudblood.Contrib.MG.GMCP
 
-triggerCommunication :: TriggerEvent -> StateT Bool (MBTrigger u) String
-triggerCommunication = (guardGMCP >=> lift . triggerGmcpCommunication) <||> otherComm
+loopT :: (a -> MBTrigger u [TriggerEvent])
+      -> (TriggerEvent -> MBTrigger u [TriggerEvent])
+      -> (a -> MBTrigger u [TriggerEvent])
+loopT startt nextt = startt >=> yieldT >=> loop
     where
-        otherComm =
-                (multiline "^\\[[^]]+:[^]]+]" "^ ")
-           <||> (multiline "^.+ teilt Dir mit:" "^ ")
+        loop x = ((nextt >=> yieldT >=> loop) x) `mplus` (return [x])
 
-multiline init follow =
-    guardLine >=> \x -> do
-        st <- get
-        if st
-            then do
-                modify $ const False
-                lift $ regexAS follow x
-                modify $ const True
-                return $ fromAS x
-            else do
-                lift $ regexAS init x
-                modify $ const True
-                return $ fromAS x
+triggerCommunication :: (AttrString -> MBTrigger u [TriggerEvent]) -> TriggerEvent -> MBTrigger u [TriggerEvent]
+triggerCommunication f =
+    (loopT (guardLine >=> (keep1 $ regexAS "^\\[[^]]+:[^]]+]") >=> f)
+           (guardLine >=> (keep1 $ regexAS "^ ") >=> f))
+    <||>
+    (loopT (guardLine >=> (keep1 $ regexAS "^.+ teilt Dir mit:") >=> f)
+           (guardLine >=> (keep1 $ regexAS "^ ") >=> f))
