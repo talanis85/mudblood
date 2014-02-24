@@ -4,10 +4,13 @@ module Mudblood.Contrib.Settings
     ( R_Settings (..), mkSettings
     , getSetting, modifySetting
     , guardSetting, guardSettingTrue
+    , loadSettings
     ) where
 
 import Data.Has
 import qualified Data.Map as M
+
+import Text.ParserCombinators.Parsec
 
 import Mudblood
 
@@ -39,3 +42,40 @@ guardSetting key f = do
 
 guardSettingTrue :: (Has R_Settings u) => String -> MBTrigger u ()
 guardSettingTrue key = guardSetting key (== UserValueBool True)
+
+-----------------------------------------------------------------------------
+
+loadSettings :: (Has R_Settings u) => String -> MB u ()
+loadSettings f = do
+    case parse pSettingsFile "" f of
+        Left err -> throwError $ stackTrace "settings" $ "Error reading settings: " ++ show err
+        Right a -> modifySettings $ const a
+
+pSettingsFile = do
+    settings <- many pSetting
+    return $ M.fromList settings
+
+pSetting = do
+    many newline
+    name <- many1 $ noneOf " =\n"
+    spaces
+    char '='
+    spaces
+    value <- choice [ pBoolValue, pIntValue, pStringValue ]
+    many newline
+    return (name, value)
+
+pStringValue = fmap userValueFromString $ anyChar `manyTill` newline
+
+pBoolValue = fmap UserValueBool $ choice
+    [ string "yes"      >> return True
+    , string "no"       >> return False
+    , string "true"     >> return True
+    , string "false"    >> return False
+    ]
+
+pIntValue = do
+    d <- many1 digit
+    case reads d of
+        [] -> fail "Expected number"
+        ((x,_):_) -> return $ userValueFromInt x
