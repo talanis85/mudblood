@@ -5,10 +5,16 @@ module Mudblood.Contrib.MG.Guilds
     , module Mudblood.Contrib.MG.Guilds.Zauberer
 
     , spell, hands, unhands
+    , defaultStatus
     ) where
 
 import Data.Maybe
 import Data.String.Utils
+
+import Text.Printf
+
+import Data.Has hiding ((^.))
+import Control.Lens
 
 import Mudblood
 
@@ -16,6 +22,15 @@ import Mudblood.Contrib.MG.State
 
 import Mudblood.Contrib.MG.Guilds.Tanjian
 import Mudblood.Contrib.MG.Guilds.Zauberer
+
+defaultStatus :: (Has R_Common u) => MB u String
+defaultStatus = do
+    stat <- getU R_Common
+    let lp  = stat ^. mgStatLP
+        mlp = stat ^. mgStatMLP
+        kp  = stat ^. mgStatKP
+        mkp = stat ^. mgStatMKP
+    return $ printf "LP: %d (%d) | KP: %d (%d)" lp mlp kp mkp
 
 spell :: (MBMonad m u, Has R_Common u) => String -> m ()
 spell sp = do

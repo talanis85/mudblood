@@ -112,6 +112,8 @@ boot userpath profile = do
             modifyMap $ const m
             updateHashIndex
 
+    setStatus defaultStatus
+
     mb_ $ modifySetting "colors.combat" $ const $ UserValueBool True
 
     mb_ $ do

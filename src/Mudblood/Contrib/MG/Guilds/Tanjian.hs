@@ -9,12 +9,14 @@ module Mudblood.Contrib.MG.Guilds.Tanjian
     , tanjianReport
     , tanjianTriggers
     , tanjianWidgets
+    , tanjianStatus
     , tanjianSkillLevels
     , Akshara (..), aksharaTime
     ) where
 
 import Data.Has hiding ((^.))
 import Control.Lens
+import Text.Printf
 
 import Mudblood
 import Mudblood.Contrib.Regex
@@ -108,6 +110,41 @@ tanjianWidgets = do
     showAkshara ak@(AksharaOn _ _) t = "Ja (noch " ++ show (aksharaTime ak t) ++ "s)"
     showAkshara AksharaReady _ = "Bereit"
     showAkshara ak@(AksharaBusy _) t = "Busy (noch " ++ show (aksharaTime ak t) ++ "s)"
+
+tanjianStatus :: (Has R_Common u, Has R_Tanjian u) => MB u String
+tanjianStatus = do
+    stat <- getU R_Common
+    tstat <- getU R_Tanjian
+    t <- getTime
+    return $ printf "%d / %d | %d / %d | v:%d (%s) | g:%d | %s%s%s%s%s%s%s%s"
+        (stat ^. mgStatLP)
+        (stat ^. mgStatMLP)
+        (stat ^. mgStatKP)
+        (stat ^. mgStatMKP)
+        (stat ^. mgStatVO)
+        (stat ^. mgStatFR)
+        (stat ^. mgStatG)
+        (if stat ^. mgStatB then "B" else " ")
+        (if stat ^. mgStatT then "T" else " ")
+        (if stat ^. mgStatF then "F" else " ")
+        (if tstat ^. tanjianStateHA then "HA" else "  ")
+        (case tstat ^. tanjianStateTE of
+            On -> "TE"
+            Between -> "OM"
+            Off -> "  "
+        )
+        (if tstat ^. tanjianStateKO then "KO" else "  ")
+        (case tstat ^. tanjianStateM of
+            On -> "M"
+            Between -> "m"
+            Off -> " "
+        )
+        (showAkshara (tstat ^. tanjianStateAK) t)
+  where
+    showAkshara :: Akshara -> Int -> String
+    showAkshara ak@(AksharaOn _ _) t = "AK(" ++ show (aksharaTime ak t) ++ ")"
+    showAkshara AksharaReady _ = ""
+    showAkshara ak@(AksharaBusy _) t = "ak(" ++ show (aksharaTime ak t) ++ ")"
 
 tanjianReport :: (Has R_Common u, Has R_Tanjian u) => AttrString -> MBTrigger u ()
 tanjianReport x =
