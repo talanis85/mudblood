@@ -95,10 +95,13 @@ yieldTime :: (Monad m) => Int -> TriggerM m [TriggerEvent] r r
 yieldTime x = yieldT [TimeTEvent x]
 
 -- | Return a line event
+returnLine :: (Monad m) => AttrString -> m [TriggerEvent]
 returnLine x = return [LineTEvent x]
 -- | Return a send event
+returnSend :: (Monad m) => String -> m [TriggerEvent]
 returnSend x = return [SendTEvent x]
 -- | Return a timer event
+returnTime :: (Monad m) => Int -> m [TriggerEvent]
 returnTime x = return [TimeTEvent x]
 
 -- | Discard the result of a trigger
