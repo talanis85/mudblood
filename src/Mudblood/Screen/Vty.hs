@@ -83,6 +83,8 @@ data ScreenState u = ScreenState {
     scrMode :: Mode u,
     scrTime :: Int,
 
+    scrSound :: SoundHandle,
+
     scrVty :: V.Vty,
 
     scrQuit :: Bool
@@ -127,6 +129,11 @@ mb mb = do
     interpMB (Free (MBFUI a x))                 = execUI a >> interpMB x -- NO OP
     interpMB (Free (MBFDialog desc handler x))  = runDialog desc handler >> interpMB x
     interpMB (Free (MBFGetTime g))              = gets scrTime >>= interpMB . g
+    interpMB (Free (MBFSound action g))         = gets scrSound >>= (\s -> liftIO (withSoundSync s action)) >>= interpMB . g
+{-
+    handleError f (Left err) = return $ Left err
+    handleError f (Right x) = f x
+    -}
 
 mapKey :: V.Key -> Maybe Key
 mapKey k = case k of
@@ -201,12 +208,13 @@ execScreen conf initMBState action =
     chan <- newTChanIO
     forkIO $ inputLoop v chan
     forkIO $ runTimer chan
-    runScreen' (initState v conf chan initMBState) action
+    soundHandle <- initSound
+    runScreen' (initState v conf chan soundHandle initMBState) action
     V.shutdown v
   where
     runScreen' st (Screen s) = runStateT s st
 
-    initState v conf chan initMBState = ScreenState {
+    initState v conf chan sound initMBState = ScreenState {
         scrPrompt = "",
         scrMarkedPrompt = "",
         scrNormalBuffer = bufferEmpty,
@@ -217,6 +225,7 @@ execScreen conf initMBState action =
         scrMenu = Nothing,
         scrMode = NormalMode,
         scrVty = v,
+        scrSound = sound,
         scrMBConfig = conf,
         scrMBState = initMBState,
         scrSocket = Nothing,

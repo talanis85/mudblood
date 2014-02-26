@@ -22,7 +22,8 @@ executable mudblood-mg-gtk
     build-depends:      base, mtl, utf8-string, bytestring, monad-coroutine,
                         network, hint, containers, split, binary, MissingH,
                         parsec, either, regex-base, regex-tdfa, array, split,
-                        free, json, fgl, filepath, directory, lens, time, colour, has
+                        free, json, fgl, filepath, directory, lens, time, colour, has,
+                        OpenAL, ALUT
     hs-source-dirs:     src
 
     if os(windows)
@@ -43,6 +44,7 @@ executable mudblood-mg-vty
         build-depends:      base, mtl, utf8-string, bytestring, monad-coroutine,
                             network, hint, containers, split, binary, MissingH,
                             parsec, either, regex-base, regex-tdfa, array, split,
-                            free, json, fgl, filepath, directory, lens, time, colour, has
+                            free, json, fgl, filepath, directory, lens, time, colour, has,
+                            ALUT
 
         build-depends:  unix, terminfo, ansi-terminal, vty ==5.0.0, stm, process
