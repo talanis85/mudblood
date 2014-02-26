@@ -21,6 +21,12 @@ triggerGmcpHello t =
         TelnetNeg (Just CMD_WILL) (Just OPT_GMCP) [] -> mapM_ send $ gmcpHello ["MG.char 1", "comm.channel 1", "MG.room 1"]
         _ -> failT
 
+readGuild :: String -> Maybe MGGuild
+readGuild "abenteurer"  = Just MGGuildAbenteurer
+readGuild "tanjian"     = Just MGGuildTanjian
+readGuild "zauberer"    = Just MGGuildZauberer
+readGuild _             = Nothing
+
 triggerGmcpStat :: (Has R_Common u) => GMCP -> MBTrigger u ()
 triggerGmcpStat g =
     case gmcpModule g of
@@ -31,7 +37,7 @@ triggerGmcpStat g =
                     . (mgCharPresay   ??~ (getStringField "presay" g))
                     . (mgCharTitle    ??~ (getStringField "title" g))
                     . (mgCharWizlevel ??~ (getIntField "wizlevel" g))
-                    -- . (mgGuild        ??~ (getStringField "guild" g >>= readGuild))
+                    . (mgGuild        ??~ (getStringField "guild" g >>= readGuild))
             in modifyU R_Common statfun
         "MG.char.info" ->
             let statfun =
