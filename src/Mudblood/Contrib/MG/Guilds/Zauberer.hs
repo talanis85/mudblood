@@ -7,11 +7,14 @@ module Mudblood.Contrib.MG.Guilds.Zauberer
     , zaubererReport
     , zaubererTriggers
     , zaubererWidgets
+    , zaubererStatus
     , zaubererSkillLevels
     ) where
 
 import Data.Has hiding ((^.))
 import Control.Lens
+
+import Text.Printf
 
 import Mudblood
 import Mudblood.Contrib.Regex
@@ -109,6 +112,44 @@ zaubererWidgets = do
 
     showWille True  = "An"
     showWille False = "Aus"
+
+zaubererStatus :: (Has R_Common u, Has R_Zauberer u) => MB u String
+zaubererStatus = do
+    stat <- getU R_Common
+    zstat <- getU R_Zauberer
+    return $ printf "%d / %d | %d / %d | v:%d (%s) | g:%d | %s%s%s | %d / %d | %s %s %s %s"
+        (stat ^. mgStatLP)
+        (stat ^. mgStatMLP)
+        (stat ^. mgStatKP)
+        (stat ^. mgStatMKP)
+        (stat ^. mgStatVO)
+        (stat ^. mgStatFR)
+        (stat ^. mgStatG)
+        (if stat ^. mgStatB then "B" else " ")
+        (if stat ^. mgStatT then "T" else " ")
+        (if stat ^. mgStatF then "F" else " ")
+        (zstat ^. zaubererStateSP)
+        (zstat ^. zaubererStateSPMax)
+        (showSchutz $ zstat ^. zaubererStateS)
+        (showHand $ zstat ^. zaubererStateH)
+        (showExtrahand $ zstat ^. zaubererStateXH)
+        (showWille $ zstat ^. zaubererStateW)
+  where
+    showSchutz MGZaubererSchutzAus          = " "
+    showSchutz MGZaubererSchutzSchutz       = "s"
+    showSchutz MGZaubererSchutzSchutzhuelle = "S"
+    
+    showHand MGZaubererHandAus    = "  "
+    showHand MGZaubererHandNormal = "Hf"
+    showHand MGZaubererHandFeuer  = "HF"
+    showHand MGZaubererHandEis    = "HE"
+    showHand MGZaubererHandSaeure = "HS"
+
+    showExtrahand True  = "XH"
+    showExtrahand False = "  "
+
+    showWille True  = "W"
+    showWille False = " "
 
 zaubererReport :: (Has R_Common u, Has R_Zauberer u) => AttrString -> MBTrigger u ()
 zaubererReport x =
