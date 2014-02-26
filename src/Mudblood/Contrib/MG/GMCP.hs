@@ -2,6 +2,7 @@
 
 module Mudblood.Contrib.MG.GMCP
     ( triggerGmcpHello, triggerGmcpStat, triggerGmcpCommunication
+    , triggerGmcpDomain
     ) where
 
 import Data.Has
@@ -48,6 +49,14 @@ triggerGmcpStat g =
                       (mgStatLP     ??~ (getIntField "hp" g))
                     . (mgStatKP     ??~ (getIntField "sp" g))
             in modifyU R_Common statfun
+        _ -> failT
+
+triggerGmcpDomain :: GMCP -> MBTrigger u String
+triggerGmcpDomain g =
+    case gmcpModule g of
+        "MG.room.info" -> case getStringField "domain" g of
+            Nothing -> failT
+            Just d -> return d
         _ -> failT
 
 triggerGmcpCommunication :: GMCP -> MBTrigger u String
