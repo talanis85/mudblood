@@ -1,52 +1,54 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Mudblood.Error
-    ( Error, StackTrace
-    , failErr, tryErr, eitherErr, maybeErr
-    , failErrT, tryErrT, eitherErrT, maybeErrT
-    , runErrorT
+    ( StackTrace
+    , stackTrace, stackError, justError
+    , maybeError, eitherError, mapLeft
+    , ignoreError
     ) where
 
-import Control.Monad.Trans.Either
+import Data.Monoid
+import Data.Maybe
+import Control.Monad
+import Control.Monad.Trans
+import Control.Monad.Error
 
-type ErrorT = EitherT StackTrace
-type Error = Either StackTrace
+newtype StackTrace = StackTrace [(String, String)]
+    deriving (Monoid)
 
-newtype StackTrace = StackTrace { getStackTrace :: [(String, String)] }
+instance Error StackTrace where
+    noMsg = StackTrace [("", "")]
+    strMsg str = StackTrace [("", str)]
 
 instance Show StackTrace where
-    show st =
-        let show' (n, (subsys, msg)) = show n ++ ". [" ++ subsys ++ "] " ++ msg
-        in unlines $ map show' (zip [1..] (getStackTrace st))
+    show (StackTrace l) = unlines $ map (\(a,b) -> "[" ++ a ++ "] " ++ b) l
 
-failErr :: String -> String -> Error a
-failErr subsys msg = Left $ StackTrace [(subsys, msg)]
+stackTrace :: String -> String -> StackTrace
+stackTrace subsys msg = StackTrace [(subsys, msg)]
 
-tryErr :: String -> String -> Error a -> Error a
-tryErr subsys msg err = case err of
-    Left trace -> Left $ StackTrace $ (subsys, msg) : (getStackTrace trace)
-    Right v -> Right v
+stackError :: (MonadError e m, Error e, Monoid e) => e -> m a -> m a
+stackError e m = catchError m $ \e' -> throwError $ e <> e'
 
-eitherErr :: String -> Either String a -> Error a
-eitherErr subsys e = case e of
-    Left err -> Left $ StackTrace [(subsys, err)]
-    Right r -> Right r
+justError :: (MonadError e m, Error e, Show a) => Maybe a -> m ()
+justError m = case m of
+    Just err -> throwError $ strMsg $ show err
+    Nothing -> return ()
 
-maybeErr :: String -> Maybe String -> Error ()
-maybeErr subsys e = case e of
-    Just err -> Left $ StackTrace [(subsys, err)]
-    Nothing -> Right ()
+maybeError :: (MonadError e m, Error e) => e -> Maybe a -> m a
+maybeError err m = case m of
+    Just x -> return x
+    Nothing -> throwError err
 
+eitherError :: (MonadError e m, Error e) => Either e a -> m a
+eitherError e = case e of
+    Left err -> throwError err
+    Right x -> return x
 
-runErrorT :: (Monad m) => ErrorT m a -> m (Error a)
-runErrorT = runEitherT
+ignoreError :: (MonadError e m, Error e) => m a -> m ()
+ignoreError m = catchError (m >> return ()) (const $ return ())
 
-failErrT :: (Monad m) => String -> String -> ErrorT m a
-failErrT subsys msg = hoistEither $ failErr subsys msg
+mapLeft :: (a -> b) -> Either a c -> Either b c
+mapLeft f e = case e of
+    Left x -> Left $ f x
+    Right x -> Right x
 
-tryErrT :: (Monad m) => String -> String -> ErrorT m a -> ErrorT m a
-tryErrT subsys msg err = EitherT $ runErrorT err >>= return . tryErr subsys msg
-
-eitherErrT :: (Monad m) => String -> Either String a -> ErrorT m a
-eitherErrT subsys e = hoistEither $ eitherErr subsys e
-
-maybeErrT :: (Monad m) => String -> Maybe String -> ErrorT m ()
-maybeErrT subsys e = hoistEither $ maybeErr subsys e

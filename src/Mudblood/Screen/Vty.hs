@@ -44,6 +44,8 @@ import Mudblood.UI
 import Mudblood.Mapper.Map
 import qualified Mudblood.Screen as SC
 import Mudblood.Screen (mb_)
+import Mudblood.Sound
+import Mudblood.Error
 
 import Data.Time.Clock.POSIX
 
