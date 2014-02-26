@@ -2,7 +2,7 @@ module Control.Trigger
     ( module Control.Trigger.Monad
     , module Control.Trigger.Flow
 
-    , lift, get, modify
+    , lift, get, modify, put
     , statefulT
     ) where
 
