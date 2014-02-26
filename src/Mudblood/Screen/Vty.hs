@@ -130,10 +130,6 @@ mb mb = do
     interpMB (Free (MBFDialog desc handler x))  = runDialog desc handler >> interpMB x
     interpMB (Free (MBFGetTime g))              = gets scrTime >>= interpMB . g
     interpMB (Free (MBFSound action g))         = gets scrSound >>= (\s -> liftIO (withSoundSync s action)) >>= interpMB . g
-{-
-    handleError f (Left err) = return $ Left err
-    handleError f (Right x) = f x
-    -}
 
 mapKey :: V.Key -> Maybe Key
 mapKey k = case k of

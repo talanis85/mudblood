@@ -172,7 +172,7 @@ mb mb = do
     --interpMB (Free (MBFDialog desc handler x)) = createDialogWindow desc handler >> interpMB x
     interpMB (Free (MBFDialog desc handler x)) = interpMB x
     interpMB (Free (MBFGetTime g)) = gets scrTime >>= interpMB . g
-    interpMB (Free (MBFSound action g)) = gets scrSound >>= (\s -> liftIO (withSound s action)) >>= interpMB . g
+    interpMB (Free (MBFSound action g)) = gets scrSound >>= (\s -> liftIO (withSoundSync s action)) >>= interpMB . g
 
 showError = appendToMainBuffer . setFg Red . toAS
 
