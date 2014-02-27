@@ -38,9 +38,6 @@ import Control.Monad.Writer
 import Control.Monad.Free
 import Control.Monad.Error
 
-import Language.DLisp.Core
-import Mudblood.Language
-
 import qualified Data.Map as M
 
 import Control.Exception

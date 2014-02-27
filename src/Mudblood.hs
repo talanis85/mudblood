@@ -6,7 +6,6 @@ module Mudblood
     , module Mudblood.UI
     , module Mudblood.Mapper
     , module Mudblood.Paths
-    , module Mudblood.Language
     , module Mudblood.UserData
     , module Mudblood.Error
     ) where
@@ -18,6 +17,5 @@ import Mudblood.Keys
 import Mudblood.UI
 import Mudblood.Mapper
 import Mudblood.Paths
-import Mudblood.Language
 import Mudblood.UserData
 import Mudblood.Error
