@@ -1,6 +1,6 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
-module Language.DLisp.Core
+module Mudblood.Contrib.Lisp.Core
     ( Exp (..)
     , Context
     , Result

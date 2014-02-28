@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 
-module Mudblood.Language
+module Mudblood.Contrib.Lisp.MB
     ( Value (..)
     , mkBoolValue, mkIntValue, mkFloatValue, mkStringValue
     , mkAttrStringValue
@@ -13,7 +13,7 @@ module Mudblood.Language
     ) where
 
 import Text.ParserCombinators.Parsec
-import Language.DLisp.Core
+import Mudblood.Contrib.Lisp.Core
 import Mudblood.Text
 import Data.Monoid
 import Control.Monad
@@ -134,8 +134,8 @@ instance ValueClass Value where
     valueNeg (BoolValue a) = Just $ BoolValue $ not a
     valueNeg _ = Nothing
 
-mbBuiltins :: (Monad m) => [(String, Exp m Value)]
-mbBuiltins =
+mbBuiltins :: (Monad m) => Context m Value
+mbBuiltins = mkContext $
     [ ("if", dlispIf)
     , ("=", dlispStdBinary valueEq)
     , ("+", dlispStdBinary valuePlus)
