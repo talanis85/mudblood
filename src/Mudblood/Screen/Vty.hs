@@ -323,7 +323,8 @@ handleTelneg neg = do
     mb_ $ processTelnet neg
 
 execUI :: UIAction (MB u) -> Screen u ()
-execUI (UISetCompletion comp) = modify $ \s -> s { scrNormalBuffer = bufferSetCompletion comp (scrNormalBuffer s) }
+execUI (UISetCompletion comp)       = modify $ \s -> s { scrNormalBuffer = bufferSetCompletion comp (scrNormalBuffer s) }
+execUI (UIBind keystring action)    = bind keystring (mb_ $ action)
 execUI UIBell = do
     liftIO $ runInteractiveCommand $ "aplay /home/philip/res/synth1.wav"
     return ()
