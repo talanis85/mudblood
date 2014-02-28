@@ -7,12 +7,13 @@ module Mudblood.Core
       MB, runMB
     , MBState (mbLinebuffer, mbUserData), mkMBState
     , MBConfig (..), mkMBConfig
+    , CommandHandler (CommandHandler)
     , LogSeverity (LogDebug, LogInfo, LogWarning, LogError)
     , StackTrace
     -- * The MBF Functor
     , MBF (..)
     -- * MB primitives
-    , command, commands, quit
+    , command, commands, setCommandHandler, quit
     , process, processSend, processTelnet, processTime
     , connect, modifyTriggers, trigger, runTrigger, feedTrigger
     , gmcpHello
@@ -157,6 +158,7 @@ data MBState u = MBState
     , mbTrigger         :: MBTriggerFlow u
     , mbUserData        :: u
     , mbMap             :: Map
+    , mbCommandHandler  :: CommandHandler u
 }
 
 -- | Create a new MBState.
@@ -164,20 +166,25 @@ mkMBState :: MBTriggerFlow u                    -- ^ Triggers
           -> u                                  -- ^ User data
           -> MBState u
 
+newtype CommandHandler u = CommandHandler { runCommandHandler :: String -> MB u (CommandHandler u) }
+
+emptyHandler = CommandHandler $ const $ return emptyHandler
+
 mkMBState triggers user = MBState
     { mbLinebuffer  = []
     , mbLog         = []
     , mbTrigger     = triggers
     , mbUserData    = user
     , mbMap         = mapEmpty
+    , mbCommandHandler = emptyHandler
     }
 
 data MBConfig u = MBConfig
-    { confCommandHandler :: String -> MB u ()
+    {
     }
 
 mkMBConfig = MBConfig
-    { confCommandHandler    = const $ return ()
+    {
     }
 
 data MBF u o = forall a. MBFIO (IO a) (a -> o)
@@ -215,12 +222,16 @@ runMB conf st (MB mb) = runErrorT (runStateT (runReaderT mb conf) st)
 -- | Parse and execute a command
 command :: String -> MB u ()
 command c = do
-    conf <- ask
-    stackError (stackTrace "core" "Error executing command") $ confCommandHandler conf c
+    handler <- gets mbCommandHandler
+    newHandler <- stackError (stackTrace "core" "Error executing command") $ runCommandHandler handler c
+    setCommandHandler newHandler
 
 -- | Run commands from a string
 commands :: String -> MB u ()
 commands s = forM_ (filter (/= "") (lines s)) command
+
+setCommandHandler :: CommandHandler u -> MB u ()
+setCommandHandler h = modify $ \s -> s { mbCommandHandler = h }
 
 -- | Quit mudblood
 quit :: MB u ()
