@@ -6,6 +6,7 @@ module Control.Trigger.Monad
     , yieldT, replaceT, failT, whileT
     , liftT, tryT
     , (<||>), choiceT
+    , repeatT
     -- * Re-exports from Control.Monad
     , (>=>), guard
     ) where
@@ -13,6 +14,9 @@ module Control.Trigger.Monad
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Coroutine
+
+import Data.Monoid
+import Control.Applicative
 
 newtype TriggerM m y r o = TriggerM (Coroutine (MaybeRequest y r) m o)
     deriving (Monad)
@@ -71,6 +75,14 @@ tryT (TriggerM trig) = TriggerM $ trig' trig
                 Left (Yield x g) -> suspend $ Yield x (trig' . g)
                 Left (Replace x g) -> suspend $ Replace x (trig' . g)
                 Right v -> return $ Just v
+
+repeatT :: (Monad m, Monoid y, Applicative f, Monoid (f o)) => (a -> TriggerM m y a o) -> (a -> TriggerM m y a (f o))
+repeatT trig = repeatT' trig mempty
+    where repeatT' trig a x = do
+            r <- tryT (trig x)
+            case r of
+                Nothing -> return a
+                Just v  -> yieldT mempty >>= repeatT' trig (a <> pure v)
 
 whileT :: (Monad m) => (r -> TriggerM m y r o) -- ^ Guard trigger to execute before
                       -> (o -> Bool)            -- ^ The condition
