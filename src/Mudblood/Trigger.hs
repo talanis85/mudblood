@@ -14,6 +14,7 @@ module Mudblood.Trigger
     , returnLine, returnSend, returnTime
     -- ** Trigger combinators
     , gag, keep, keep1, pass
+    , loopT
     -- * Common triggers
     , on
     -- ** Coloring
@@ -118,6 +119,16 @@ keep1 a ev = a ev >> return ev
 
 pass :: (Monad m) => m () -> a -> m a
 pass m x = m >> return x
+
+-- | If the first trigger succeeds, subsequent events will run the second trigger
+--   until one of these fails.
+loopT :: (Monad m)
+      => (a -> TriggerM m [a] a [a])
+      -> (a -> TriggerM m [a] a [a])
+      -> (a -> TriggerM m [a] a [a])
+loopT startt nextt = startt >=> yieldT >=> loop
+    where
+        loop x = ((nextt >=> yieldT >=> loop) x) `mplus` (return [x])
 
 -- | Colorize an AttrString
 colorize :: (Monad m) => Color -> AttrString -> TriggerM m i y [TriggerEvent]
