@@ -6,6 +6,7 @@ module Mudblood.Contrib.MG.Guilds
     , module Mudblood.Contrib.MG.Guilds.Zauberer
 
     , defaultStatus
+    , guardGuild
     ) where
 
 import Data.Maybe
@@ -32,3 +33,7 @@ defaultStatus = do
         kp  = stat ^. mgStatKP
         mkp = stat ^. mgStatMKP
     return $ printf "LP: %d (%d) | KP: %d (%d)" lp mlp kp mkp
+
+guardGuild :: (Has R_Common u) => MGGuild -> a -> MBTrigger u a
+guardGuild g = keep1 checkGuild
+    where checkGuild _ = getU' R_Common mgGuild >>= guard . (== g)
