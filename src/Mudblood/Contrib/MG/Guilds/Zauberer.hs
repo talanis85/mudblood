@@ -8,11 +8,14 @@ module Mudblood.Contrib.MG.Guilds.Zauberer
     , zaubererTriggers
     , zaubererWidgets
     , zaubererStatus
+    , zaubererQuerySkills
+    , zaubererSkills
     , zaubererSkillLevels
     ) where
 
 import Data.Has hiding ((^.))
 import Control.Lens
+import Data.Maybe
 
 import Text.Printf
 
@@ -191,6 +194,46 @@ zaubererTriggers :: (Has R_Common u, Has R_Zauberer u) => MBTriggerFlow u
 zaubererTriggers = Permanent (gag $ guardLine >=> zaubererReport)
               :>>: Permanent (guardLine >=> keep1 (regexAS "^Du lernst etwas aus Deinem Erfolg") >=> returnLine . setFg Magenta)
               :>>: Permanent (guardLine >=> keep1 (regexAS "^Du lernst etwas aus Deinen Fehlern") >=> returnLine . setFg Magenta)
+
+zaubererQuerySkills :: (Has R_Zauberer u) => MBTrigger u [(String, Int)]
+zaubererQuerySkills = yieldSend "teile llystrathe mit faehigkeiten" >>= readSkills
+    where
+        readSkills = guardLine
+                     >=> regexAS "^Llystrathe teilt Dir mit: Folgendes ist von Deinen Fertigkeiten zu halten:"
+                     >=> (const $ yieldT [] >>= repeatT parseSkill)
+        parseSkill = guardLine >=> regexAS "^Llystrathe teilt Dir mit: (.+[[:word:]]) +: +(.+)$" >=> \(_, [k, v]) ->
+            return (k, fromMaybe 0 $ skillToPercent zaubererSkillLevels v)
+
+position :: (Eq a) => a -> [a] -> Maybe Int
+position v l = position' 0 v l
+    where position' i v [] = Nothing
+          position' i v (x:xs) = if x == v then Just i else position' (i+1) v xs
+
+skillToPercent :: [String] -> String -> Maybe Int
+skillToPercent levels val = fmap calcpercent $ position val levels
+    where calcpercent x = ((x+1) * 100) `div` length levels
+
+zaubererSkills = [ "Insgesamt"
+                 , "Zaubern allgemein"
+                 , "Zauberstab"
+                 , "Erzwinge"
+                 , "Giftpfeil"
+                 , "Hand"
+                 , "Identifiziere"
+                 , "Licht"
+                 , "Rausch"
+                 , "Schutz"
+                 , "Stimme"
+                 , "Wasserwandlung"
+                 , "Werte"
+                 , "Wille"
+                 , "Zwingtanz"
+                 , "Schmerzen"
+                 , "Schattenkaempfer"
+                 , "Illusion"
+                 , "Erschaffe"
+                 , "Extrahand"
+                 ]
 
 zaubererSkillLevels = [
         "unaussprechbar uebel",
