@@ -23,7 +23,7 @@ executable mudblood-mg-gtk
                         network, hint, containers, split, binary, MissingH,
                         parsec, either, regex-base, regex-tdfa, array, split,
                         free, json, fgl, filepath, directory, lens, time, colour, has,
-                        OpenAL, ALUT
+                        OpenAL, ALUT, sqlite
     hs-source-dirs:     src
 
     if os(windows)
@@ -45,6 +45,6 @@ executable mudblood-mg-vty
                             network, hint, containers, split, binary, MissingH,
                             parsec, either, regex-base, regex-tdfa, array, split,
                             free, json, fgl, filepath, directory, lens, time, colour, has,
-                            ALUT
+                            ALUT, sqlite
 
         build-depends:  unix, terminfo, ansi-terminal, vty ==5.0.0, stm, process

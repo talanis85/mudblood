@@ -14,5 +14,4 @@ main = do
     profpath <- case args of
         [profile] -> initUserPath ["mg", profile]
         _         -> initUserPath ["mg"]
-    prof <- loadProfile profpath
-    execScreen "res/gui.glade" mkMBConfig (mkMBState (triggers prof) mkMGState) (boot userpath prof >> screen (return ()))
+    execScreen "res/gui.glade" mkMBConfig (mkMBState NoTrigger mkMGState) (boot userpath profpath >> screen (return ()))

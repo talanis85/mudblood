@@ -12,5 +12,4 @@ main = do
     profpath <- case args of
         [profile] -> initUserPath ["mg", profile]
         _         -> initUserPath ["mg"]
-    prof <- loadProfile profpath
-    execScreen mkMBConfig (mkMBState (triggers prof) mkMGState) (boot userpath prof >> screen )
+    execScreen mkMBConfig (mkMBState NoTrigger mkMGState) (boot userpath profpath >> screen )

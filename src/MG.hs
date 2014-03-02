@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeOperators, TypeFamilies, FlexibleContexts #-}
+{-# LANGUAGE TypeOperators, TypeFamilies, FlexibleContexts, MultiParamTypeClasses #-}
 
 module MG where
 
@@ -8,7 +8,8 @@ import Data.Has (FieldOf, fieldOf, (:&:), (&))
 import Control.Lens hiding ((&))
 import qualified Data.Map as M
 import Data.Foldable
-import Control.Monad.Writer (Writer, tell, execWriter)
+import Data.Monoid
+import Control.Monad.Writer (Writer, tell, execWriterT)
 
 import Text.Printf
 
@@ -17,18 +18,25 @@ import Mudblood.Contrib.ColorConfig
 import Mudblood.Contrib.Regex
 import Mudblood.Contrib.MG
 import Mudblood.Contrib.Settings
+import Mudblood.Contrib.SkillDb
+import qualified Mudblood.Contrib.Lisp as L
 import Mudblood.Screen
+import Mudblood.Sound
 
 -----------------------------------------------------------------------------
 
 type MGState = FieldOf R_Common
            :&: FieldOf R_Mapper
            :&: FieldOf R_Settings
+           :&: FieldOf R_Tanjian
+           :&: FieldOf R_Zauberer
 
 mkMGState :: MGState
 mkMGState = fieldOf mkMGCommonState
           & fieldOf mkMGMapperState
           & fieldOf mkSettings
+          & fieldOf mkMGTanjianState
+          & fieldOf mkMGZaubererState
 
 -----------------------------------------------------------------------------
 
@@ -74,31 +82,77 @@ mapperMenu = KeyMenu
       ))
     ]
 
-loadProfile profilepath = do
-    profilefile <- readUserFile $ profilepath </> "profile"
-    case profilefile of
-        Nothing -> return mkMGProfile
-        Just f -> do
-            case readProfile f of
-                Left err -> return mkMGProfile
-                Right p -> return p
-
 whenJust x f = case x of
     Nothing -> return ()
     Just x' -> f x'
 
-triggers :: MGProfile -> MBTriggerFlow MGState
-triggers profile = execWriter $ do
-    whenJust (profLogfile profile) $ tell . logfileTrigger
+triggers :: SkillDbHandle -> MB MGState (MBTriggerFlow MGState)
+triggers skilldb = execWriterT $ do
+    tell $ Permanent $ keep $ guardSend >=> regex "music1" >=> (const $ sound (playMusic "music1.wav"))
+    tell $ Permanent $ keep $ guardSend >=> regex "music2" >=> (const $ sound (playMusic "music2.wav"))
+
+    tell $ Volatile $ statefulT "" $ keep $ pass (lift $ guardSettingTrue "sound.domainMusic")
+                                            >=> guardGMCP >=> lift . triggerGmcpDomain >=> \d -> do
+        oldd <- get
+        if d == oldd
+            then lift failT
+            else do
+                put d
+                echo ("New region: " ++ oldd ++ " -> " ++ d)
+                lift $ liftT $ ignoreError $ sound (playMusic $ d ++ ".wav")
 
     tell $ Permanent (keep $ guardTelneg >=> triggerGmcpHello)
-    tell $ Permanent (keep $ guardGMCP >=> triggerGmcpStat)
-    tell $ Permanent (guardGMCP >=> triggerGmcpCommunication >=> colorize Blue)
+    tell $ Permanent $ keep $ guardGMCP >=> triggerGmcpStat
+
+    tell $ Permanent $ gag $ guardSend >=> regex "^skills$" >=> guardGuild MGGuildZauberer
+                             >=> (const zaubererQuerySkills) >=> updateSkills skilldb >=> displaySkills
+
+    tell $ zaubererTriggers :>>: tanjianTriggers
+
+    tell $ Permanent $ guardSend >=> regex "^skills$" >=> const zaubererQuerySkills >=> returnLine . toAS . show
+
+    tell $ Permanent $ keep $ pass (guardSettingTrue "sound.health") >=> guardGMCP >=> triggerGmcpStat >=> (const $ do
+        lp <- getU' R_Common mgStatLP
+        mlp <- getU' R_Common mgStatMLP
+        echo $ show $ fromIntegral lp / fromIntegral mlp
+        sound $ playHealth (Just $ fromIntegral lp / fromIntegral mlp))
+
+    tell $ Permanent $ triggerCommunication $
+         (pass (guardSettingTrue "colors.communication") >=> returnLine . setFg Blue) <||> returnLine
+
     tell $ roomTriggers NoTrigger NoTrigger
     tell $ Permanent quantizeFitness
     tell $ Permanent (pass (guardSettingTrue "colors.combat") >=> colorizeCombat Green Red)
 
-boot userpath profile = do
+    logfile <- lift $ fmap userValueToString $ getSetting "logfile"
+    whenJust logfile $ tell . logfileTrigger
+
+loadDefaultSettings :: (Has R_Settings u) => MB u ()
+loadDefaultSettings = do
+    modifySetting "colors.combat" $ const $ UserValueBool True
+    modifySetting "colors.communication" $ const $ UserValueBool True
+    modifySetting "sound.domainMusic" $ const $ UserValueBool False
+    modifySetting "sound.health" $ const $ UserValueBool False
+
+status :: MB MGState String
+status = do
+    guild <- getU' R_Common mgGuild
+    case guild of
+        MGGuildTanjian -> tanjianStatus
+        MGGuildZauberer -> zaubererStatus
+        _ -> defaultStatus
+
+lispHandler :: L.Context (MB MGState) L.Value -> CommandHandler MGState
+lispHandler ctx = CommandHandler $ \c -> do
+    exp <- eitherError $ mapLeft (stackTrace "parse") $ L.parse L.parseValue c
+    res <- L.run ctx exp >>= eitherError . (mapLeft $ stackTrace "run")
+    case res of
+        L.List [] -> return ()
+        _         -> echo $ "-> " ++ show res
+    return $ lispHandler ctx
+
+boot :: (ScreenClass MGState s) => String -> String -> s ()
+boot userpath profpath = do
     -- Mapper menu
     bind [KAscii '\\'] $ menu "Commands" $ KeyMenu
         [ (KTab, ("Mapper", mapperMenu))
@@ -106,15 +160,33 @@ boot userpath profile = do
         ]
 
     mb_ $ do
-        forM_ (profMap profile) $ \path -> do
+        setCommandHandler $ lispHandler (L.mbBuiltins <> L.coreBuiltins)
+        initfile <- io $ readUserFile $ profpath </> "init"
+        case initfile of
+            Nothing -> return ()
+            Just f -> commands f
+    
+    mb_ $ do
+        loadDefaultSettings
+        profile <- io $ readUserFile $ profpath </> "profile"
+        forM_ profile $ loadSettings
+
+    mb_ $ do
+        skilldb <- io $ openSkillDb $ profpath </> "skills"
+        trigs <- triggers skilldb
+        modifyTriggers $ const trigs
+
+    mb_ $ do
+        mapfile <- fmap userValueToString $ getSetting "mapper.file"
+        forM_ mapfile $ \path -> do
             mapfile <- io $ readUserFile path
             m <- maybeError (stackTrace "mg" "Invalid map file") $ mapfile >>= mapFromString
             modifyMap $ const m
             updateHashIndex
 
-    setStatus defaultStatus
+    setStatus status
 
-    mb_ $ modifySetting "colors.combat" $ const $ UserValueBool True
+    mb_ $ sound $ playMusic "music.wav"
 
     mb_ $ do
         colorfile <- io $ readUserFile $ userpath </> "colors"
@@ -126,5 +198,9 @@ boot userpath profile = do
 
         -- Connect and send credentials
         connect "mg.mud.de" "4711"
-        forM_ (profChar profile) send
-        forM_ (profPassword profile) send
+
+        char <- fmap userValueToString $ getSetting "char.name"
+        pw <- fmap userValueToString $ getSetting "char.password"
+
+        forM_ char send
+        forM_ pw send
