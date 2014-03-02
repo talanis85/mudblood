@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeOperators, TypeFamilies, FlexibleContexts, MultiParamTypeClasses #-}
 
-module MG where
+module MGExperimental where
 
 import Mudblood
 

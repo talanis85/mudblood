@@ -1,11 +1,9 @@
 module Main where
 
+import Mudblood.Screen.Vty
 import Mudblood
-import Mudblood.Screen.Gtk
-
+import MGExperimental
 import System.Environment
-
-import MGStable
 
 main :: IO ()
 main = do
@@ -14,4 +12,4 @@ main = do
     profpath <- case args of
         [profile] -> initUserPath ["mg", profile]
         _         -> initUserPath ["mg"]
-    execScreen "res/gui.glade" mkMBConfig (mkMBState NoTrigger mkMGState) (boot userpath profpath >> screen (return ()))
+    execScreen mkMBConfig (mkMBState NoTrigger mkMGState) (boot userpath profpath >> screen )

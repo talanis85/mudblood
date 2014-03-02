@@ -5,7 +5,7 @@ import Mudblood.Screen.Gtk
 
 import System.Environment
 
-import MGStable
+import MGExperimental
 
 main :: IO ()
 main = do

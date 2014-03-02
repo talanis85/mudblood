@@ -2,7 +2,7 @@ module Main where
 
 import Mudblood.Screen.Vty
 import Mudblood
-import MG
+import MGStable
 import System.Environment
 
 main :: IO ()
