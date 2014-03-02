@@ -49,8 +49,6 @@ import Mudblood.Colour
 import Mudblood.UI
 import Mudblood.Mapper
 
-import Paths_mudblood
-
 import qualified Mudblood.Screen as SC
 import Mudblood.Screen (mb_)
 
