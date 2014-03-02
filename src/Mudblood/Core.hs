@@ -57,9 +57,6 @@ import Data.GMCP
 
 import Debug.Trace
 
-import Paths_mudblood
-import Data.Version
-
 data LogSeverity = LogDebug
                  | LogInfo
                  | LogWarning
@@ -322,7 +319,7 @@ gmcpHello supports =
     [ Communication $ TelnetNeg (Just CMD_DO) (Just OPT_GMCP) []
     , Communication $ GMCP "Core.Hello" $
         JSObject $ toJSObject [ ("client", JSString $ toJSString "mudblood"),
-                                ("version", JSString $ toJSString (showVersion version))
+                                ("version", JSString $ toJSString "0.1") -- TODO: Configure this somehow
                               ]
     , Communication $ GMCP "Core.Supports.Set" $ JSArray $ map (JSString . toJSString) supports
     ]
