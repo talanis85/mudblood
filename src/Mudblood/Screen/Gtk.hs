@@ -49,8 +49,6 @@ import Mudblood.Colour
 import Mudblood.UI
 import Mudblood.Mapper
 
-import Mudblood.Sound
-
 import Paths_mudblood
 
 import qualified Mudblood.Screen as SC
@@ -88,14 +86,12 @@ data ScreenState u = ScreenState {
 
     scrQuit :: Bool,
 
-    scrSound :: SoundHandle,
-
     scrWidgetCache :: [UIWidget],
 
     scrUpdateHandler :: Screen u ()
     }
 
-mkScreenState conf sound initMBState = ScreenState {
+mkScreenState conf initMBState = ScreenState {
     scrPrompt = "",
     scrMarkedPrompt = "",
     scrNormalKeybuffer = [],
@@ -106,7 +102,6 @@ mkScreenState conf sound initMBState = ScreenState {
     scrSocket = Nothing,
     scrQuit = False,
     scrTime = 0,
-    scrSound = sound,
     scrBuffers = M.empty,
     scrStatus = return "",
     scrMode = NormalMode,
@@ -172,7 +167,6 @@ mb mb = do
     --interpMB (Free (MBFDialog desc handler x)) = createDialogWindow desc handler >> interpMB x
     interpMB (Free (MBFDialog desc handler x)) = interpMB x
     interpMB (Free (MBFGetTime g)) = gets scrTime >>= interpMB . g
-    interpMB (Free (MBFSound action g)) = gets scrSound >>= (\s -> liftIO (withSoundSync s action)) >>= interpMB . g
 
 showError = appendToMainBuffer . setFg Red . toAS
 
@@ -504,8 +498,7 @@ execScreen :: String -> MBConfig u -> MBState u -> Screen u () -> IO ()
 execScreen gladepath conf initMBState action =
     do
     G.initGUI
-    soundHandle <- initSound
-    stref <- newIORef $ mkScreenState conf soundHandle initMBState
+    stref <- newIORef $ mkScreenState conf initMBState
     ctrls <- initUI gladepath stref
     forkIO $ runTimer ctrls stref
     runScreen ctrls stref action

@@ -17,7 +17,7 @@ module Mudblood.Core
     , process, processSend, processTelnet, processTime
     , connect, modifyTriggers, trigger, runTrigger, feedTrigger
     , gmcpHello
-    , MBMonad ( echo, echoA, echoAux, echoE, send, ui, io, sound, dialog, getUserData
+    , MBMonad ( echo, echoA, echoAux, echoE, send, ui, io, dialog, getUserData
               , putUserData, modifyUserData, getMap, putMap, modifyMap, getTime
               )
     -- * Triggers
@@ -51,7 +51,6 @@ import Mudblood.Text
 import Mudblood.Trigger
 import Mudblood.Mapper.Map
 import Mudblood.Keys
-import Mudblood.Sound
 import Mudblood.Error
 import Data.GMCP
 
@@ -82,8 +81,6 @@ class (Monad m) => MBMonad m u | m -> u where
 
     io :: IO a -> m a
 
-    sound :: Sound a -> m a
-
     dialog :: UIDialogDescription -> (UIDialogResult -> MB u ()) -> m ()
 
     getUserData :: m u
@@ -110,7 +107,6 @@ instance MBMonad (MB u) u where
     send x = liftF $ MBFSend (Communication x) ()
     ui action = liftF $ MBFUI action ()
     io action = liftF $ MBFIO action id
-    sound action = liftF (MBFSound action id) >>= eitherError
     dialog desc handler = liftF $ MBFDialog desc handler ()
     getUserData = gets mbUserData
     modifyUserData f = modify $ \s -> s { mbUserData = f (mbUserData s) }
@@ -125,7 +121,6 @@ instance MBMonad (TriggerM (MB u) y r) u where
     send = liftT . send
     ui = liftT . ui
     io = liftT . io
-    sound = liftT . sound
     dialog desc handler = liftT $ dialog desc handler
     getUserData = liftT getUserData
     modifyUserData = liftT . modifyUserData
@@ -139,7 +134,6 @@ instance MBMonad (StateT s (TriggerM (MB u) y r)) u where
     send = lift . send
     ui = lift . ui
     io = lift . io
-    sound = lift . sound
     dialog desc handler = lift $ dialog desc handler
     getUserData = lift getUserData
     modifyUserData = lift . modifyUserData
@@ -192,7 +186,6 @@ data MBF u o = forall a. MBFIO (IO a) (a -> o)
              | MBFUI (UIAction (MB u)) o
              | MBFDialog UIDialogDescription (UIDialogResult -> MB u ()) o
              | MBFGetTime (Int -> o)
-             | forall a. MBFSound (Sound a) (Either StackTrace a -> o)
 
 instance Functor (MBF u) where
     fmap f (MBFIO action g)             = MBFIO action $ f . g
@@ -203,7 +196,6 @@ instance Functor (MBF u) where
     fmap f (MBFConnect host port x)     = MBFConnect host port $ f x
     fmap f (MBFQuit x)                  = MBFQuit $ f x
     fmap f (MBFGetTime g)               = MBFGetTime $ f . g
-    fmap f (MBFSound action g)          = MBFSound action $ f . g
 
 --------------------------------------------------------------------------------------------------
 

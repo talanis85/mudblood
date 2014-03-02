@@ -21,7 +21,6 @@ import Mudblood.Contrib.Settings
 import Mudblood.Contrib.SkillDb
 import qualified Mudblood.Contrib.Lisp as L
 import Mudblood.Screen
-import Mudblood.Sound
 
 -----------------------------------------------------------------------------
 
@@ -88,19 +87,6 @@ whenJust x f = case x of
 
 triggers :: SkillDbHandle -> MB MGState (MBTriggerFlow MGState)
 triggers skilldb = execWriterT $ do
-    tell $ Permanent $ keep $ guardSend >=> regex "music1" >=> (const $ sound (playMusic "music1.wav"))
-    tell $ Permanent $ keep $ guardSend >=> regex "music2" >=> (const $ sound (playMusic "music2.wav"))
-
-    tell $ Volatile $ statefulT "" $ keep $ pass (lift $ guardSettingTrue "sound.domainMusic")
-                                            >=> guardGMCP >=> lift . triggerGmcpDomain >=> \d -> do
-        oldd <- get
-        if d == oldd
-            then lift failT
-            else do
-                put d
-                echo ("New region: " ++ oldd ++ " -> " ++ d)
-                lift $ liftT $ ignoreError $ sound (playMusic $ d ++ ".wav")
-
     tell $ Permanent (keep $ guardTelneg >=> triggerGmcpHello)
     tell $ Permanent $ keep $ guardGMCP >=> triggerGmcpStat
 
@@ -110,12 +96,6 @@ triggers skilldb = execWriterT $ do
     tell $ zaubererTriggers :>>: tanjianTriggers
 
     tell $ Permanent $ guardSend >=> regex "^skills$" >=> const zaubererQuerySkills >=> returnLine . toAS . show
-
-    tell $ Permanent $ keep $ pass (guardSettingTrue "sound.health") >=> guardGMCP >=> triggerGmcpStat >=> (const $ do
-        lp <- getU' R_Common mgStatLP
-        mlp <- getU' R_Common mgStatMLP
-        echo $ show $ fromIntegral lp / fromIntegral mlp
-        sound $ playHealth (Just $ fromIntegral lp / fromIntegral mlp))
 
     tell $ Permanent $ triggerCommunication $
          (pass (guardSettingTrue "colors.communication") >=> returnLine . setFg Blue) <||> returnLine
@@ -131,8 +111,6 @@ loadDefaultSettings :: (Has R_Settings u) => MB u ()
 loadDefaultSettings = do
     modifySetting "colors.combat" $ const $ UserValueBool True
     modifySetting "colors.communication" $ const $ UserValueBool True
-    modifySetting "sound.domainMusic" $ const $ UserValueBool False
-    modifySetting "sound.health" $ const $ UserValueBool False
 
 status :: MB MGState String
 status = do
@@ -185,8 +163,6 @@ boot userpath profpath = do
             updateHashIndex
 
     setStatus status
-
-    mb_ $ sound $ playMusic "music.wav"
 
     mb_ $ do
         colorfile <- io $ readUserFile $ userpath </> "colors"
