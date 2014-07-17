@@ -34,6 +34,9 @@ class (MB s m) => Game s m where
     -- | This is called on every trigger-enabled event. See 'TriggerEvent' for possible events.
     trigger :: TriggerEvent -> m ()
 
+    -- | Used by the screen to periodically query for a status line.
+    queryStatus :: m String
+
 --------------------------------------------------------------------------------------------------
 
 data TriggerEvent = LineEvent AttrString   -- ^ Emitted when a line was received from the host
