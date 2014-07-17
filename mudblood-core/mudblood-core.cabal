@@ -25,6 +25,7 @@ library
                      , Mudblood.Screen.Simple
                      , Mudblood.Telnet
                      , Data.GMCP
+                     , Data.Menu
                      , Control.DynCallback
   other-modules:       Mudblood.Utils
   default-extensions:  MultiParamTypeClasses
@@ -39,7 +40,7 @@ library
                      , containers >=0.4 && <0.5, utf8-string >=0.3 && <0.4
                      , bytestring >=0.9 && <0.10, binary >=0.5 && <0.6, network >=2.5 && <2.6
                      , json >=0.7 && <0.8, stm >=2.4 && <2.5, time >=1.4 && <1.5
-                     , MissingH >=1.2 && <1.3
+                     , MissingH >=1.2 && <1.3, bifunctors >=4.1 && <4.2
                      , Cabal >=1.20 && <1.21, HUnit >=1.2 && <1.3
   hs-source-dirs:      src
   default-language:    Haskell2010

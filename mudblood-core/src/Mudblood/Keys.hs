@@ -1,8 +1,6 @@
 module Mudblood.Keys
     ( Key (..), KeyMod (..)
     , parseKeys
-    , KeyMenu (..)
-    , emptyMenu, stepMenu, showMenu
     ) where
 
 import Text.ParserCombinators.Parsec
@@ -85,23 +83,3 @@ parseSpecialKeyName = choice $ map mkKeyParser keyNames
 parseAsciiKey = do
     c <- anyChar
     return $ KAscii c
-
------------------------------------------------------------------------------
-
--- | A simple menu structure
-data KeyMenu k v = KeyAction v | KeyMenu [(k, (String, KeyMenu k v))]
-
--- | The empty menu
-emptyMenu = KeyMenu []
-
--- | Step down one level
-stepMenu :: (Eq k) => k -> KeyMenu k v -> Maybe (String, KeyMenu k v)
-stepMenu key bindings = case bindings of
-    KeyAction x -> Nothing
-    KeyMenu l -> lookup key l
-
--- | Represent a menu as pairs of (keybinding, description)
-showMenu :: KeyMenu k v -> [(k, String)]
-showMenu m = case m of
-    KeyAction x -> []
-    KeyMenu l -> map (\(key, (desc, _)) -> (key, desc)) l

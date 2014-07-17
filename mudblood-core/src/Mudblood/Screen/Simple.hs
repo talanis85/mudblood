@@ -44,6 +44,7 @@ instance MB SimpleScreen SimpleScreen where
         outputMessage "PROMPT" p
         modify $ \s -> s { scrMode = PromptMode p f }
     bindDyn p f = return () -- unsupported
+    menuDyn m = return () -- unsupported
     connect h p = connectScreen h p
     send s = do
         outputMessage "SEND" $ show (Communication s)
