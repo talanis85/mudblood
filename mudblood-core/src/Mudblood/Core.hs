@@ -19,6 +19,7 @@ import Mudblood.Text
 import Mudblood.Telnet
 import Mudblood.Error
 import Mudblood.Utils
+import Mudblood.Trigger
 
 import Data.Maybe
 import Data.List
@@ -36,18 +37,6 @@ class (MB s m) => Game s m where
 
     -- | Used by the screen to periodically query for a status line.
     queryStatus :: m String
-
---------------------------------------------------------------------------------------------------
-
-data TriggerEvent = LineEvent AttrString   -- ^ Emitted when a line was received from the host
-                  | SendEvent String       -- ^ Emitted when the user wants to send a line of input
-                  | TelnetEvent TelnetNeg  -- ^ Emitted when a telnet negotiation is received
-                  | GMCPEvent GMCP         -- ^ Emitted when a GMCP telneg is received
-                  | TimeEvent Int          -- ^ Emitted every second. Argument is current POSIX timestamp.
-                  | BellEvent              -- ^ Emitted on bell character.
-                  | NilEvent               -- ^ Dummy event type
-                  | CustomEvent String     -- ^ User defined events
-    deriving (Eq, Show)
 
 --------------------------------------------------------------------------------------------------
 
