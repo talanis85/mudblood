@@ -54,7 +54,7 @@ runEndoTrigger :: (Monad m) => EndoTrigger t m -> t -> m ([t], EndoTrigger t m)
 runEndoTrigger t x = do
     r <- runTriggerM $ unTrigger t x
     case r of
-        Right () -> return ([], idTrigger)
+        Right () -> return ([x], idTrigger)
         Left (Yield x g) -> return (x, Trigger g)
         Left Flop -> return ([x], t)
   where
