@@ -48,6 +48,18 @@ instance (Monad m) => Arrow (Trigger m) where
     -- TODO
 -}
 
+-- | Make a Trigger repeat itself forever.
+static :: (Monad m) => Trigger m a b -> Trigger m a b
+static t' = Trigger $ static' t'
+    where static' t' = oneIteration t'    
+          oneIteration t = \x -> do
+            r <- lift $ runTriggerM $ unTrigger t x
+            case r of
+                Right () -> static' t' x
+                Left (Yield x g) -> yield x >>= oneIteration (Trigger g)
+                Left (Check g) -> check >>= g
+                Left Flop -> flop
+
 -----------------------------------------------------------------------------
 
 -- | An EndoTrigger is a special type of trigger with output type = [input type].
@@ -86,14 +98,3 @@ runEndoTrigger t x = do
 (>:>) :: (Monad m) => EndoTrigger a m -> EndoTrigger a m -> EndoTrigger a m
 (>:>) = mappend
 
--- | Make an EndoTrigger repeat itself forever.
-static :: (Monad m) => EndoTrigger a m -> EndoTrigger a m
-static t' = Trigger $ static' t'
-    where static' t' = oneIteration t'    
-          oneIteration t = \x -> do
-            r <- lift $ runTriggerM $ unTrigger t x
-            case r of
-                Right () -> static' t' x
-                Left (Yield x g) -> yield x >>= oneIteration (Trigger g)
-                Left (Check g) -> check >>= g
-                Left Flop -> flop
