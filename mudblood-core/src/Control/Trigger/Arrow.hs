@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Control.Trigger.Arrow
-    ( Trigger (..), trig
+    ( Trigger (..), trig, pure
     , EndoTrigger, EndoTriggerR
     , runEndoTrigger
     , (>:>)
@@ -24,39 +24,40 @@ newtype Trigger m a b = Trigger { unTrigger :: a -> TriggerM a b m () }
 -- | Construct a trigger from a TriggerM function.
 trig f = Trigger $ fmap void f
 
+-- | Construct a trigger from a pure function.
+pure f = Trigger $ let g = yield . f >=> g in g
+
+a >$> b = unTrigger $ Trigger b . Trigger a
+
 instance (Monad m) => Category (Trigger m) where
-    id = Trigger $ let f = yield >=> f
-                   in f
+    id = pure id
     b . a = Trigger $ \x -> do
-        r1 <- lift $ runTriggerM $ (unTrigger a) x
+        r1 <- lift $ runTriggerM $ unTrigger a x
         case r1 of
             Right () -> return ()
             Left (Yield x g) -> do
-                r2 <- lift $ runTriggerM $ (unTrigger b) x
+                r2 <- lift $ runTriggerM $ unTrigger b x
                 case r2 of
                     Right () -> return ()
-                    Left (Yield x g') -> yield x >>= (unTrigger $ Trigger g' . Trigger g)
-                    Left (Check g') -> check >>= (unTrigger $ Trigger g' . Trigger g)
+                    Left (Yield x g') -> yield x >>= (g >$> g')
+                    Left (Check g') -> check >>= (g >$> g')
                     Left Flop -> flop
-            Left (Check g) -> check >>= (unTrigger $ b . Trigger g)
+            Left (Check g) -> check >>= (unTrigger $ Trigger g >>> b)
             Left Flop -> flop
 
-{-
-instance (Monad m) => Arrow (Trigger m) where
-    arr g = Trigger $ let f = yield . singleton . g >=> f
-                      in f
-    -- TODO
--}
+instance (Monad m) => Functor (Trigger m a) where
+    fmap f t = t >>> (static $ trig $ yield . f)
 
--- | Make a Trigger repeat itself forever.
+-- | Make a Trigger repeat itself forever. You can assume that
+--
+-- @ static . static = static @
 static :: (Monad m) => Trigger m a b -> Trigger m a b
 static t' = Trigger $ static' t'
-    where static' t' = oneIteration t'    
-          oneIteration t = \x -> do
+    where static' t = \x -> do
             r <- lift $ runTriggerM $ unTrigger t x
             case r of
                 Right () -> static' t' x
-                Left (Yield x g) -> yield x >>= oneIteration (Trigger g)
+                Left (Yield x g) -> yield x >>= static' (Trigger g)
                 Left (Check g) -> check >>= g
                 Left Flop -> flop
 
@@ -67,7 +68,7 @@ type EndoTrigger t m = Trigger m t [t]
 type EndoTriggerR t m r = TriggerR t [t] m r
 
 instance (Monad m) => Monoid (Trigger m t [t]) where
-    mempty = Trigger $ let f = yield . singleton >=> f in f
+    mempty = pure singleton
     a `mappend` b = Trigger $ \x -> do
         (r1, t1) <- lift $ runEndoTrigger a x
         (r2, t2) <- lift $ foldM foldEndoTrigger ([], Just b) r1
@@ -97,4 +98,3 @@ runEndoTrigger t x = do
 --   and then feeds each result value to the second trigger.
 (>:>) :: (Monad m) => EndoTrigger a m -> EndoTrigger a m -> EndoTrigger a m
 (>:>) = mappend
-

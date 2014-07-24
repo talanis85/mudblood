@@ -1,6 +1,6 @@
 module Control.Trigger
     ( TriggerM
-    , Trigger, trig
+    , Trigger, trig, pure
     , EndoTrigger
     , runEndoTrigger
     , (>:>), (<||>)

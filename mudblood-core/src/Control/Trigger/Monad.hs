@@ -76,7 +76,7 @@ instance (Monad m) => MonadPlus (TriggerM i o m) where
             Left (Check g)   -> check >>= (\x -> g x `mplus` b)
             Left Flop        -> b
 
--- | Choice for Kleisli functionn. Try the first function; if it fails, try
+-- | Choice for Kleisli functions. Try the first function; if it fails, try
 --   the second.
 (<||>) :: (MonadPlus m) => (a -> m r) -> (a -> m r) -> (a -> m r)
 a <||> b = \x -> a x `mplus` b x
