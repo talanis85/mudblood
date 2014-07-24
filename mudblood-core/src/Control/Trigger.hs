@@ -4,7 +4,7 @@ module Control.Trigger
     , EndoTrigger
     , runEndoTrigger
     , (>:>), (<||>)
-    , yield, flop
+    , yield, flop, check
     , static, chain
 
     , singleton

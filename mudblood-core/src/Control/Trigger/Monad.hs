@@ -1,43 +1,59 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Control.Trigger.Monad
-    ( TriggerM, TriggerR, TriggerF (..)
-    , yield, flop, chain, (<||>)
+    ( TriggerM, TriggerSuspension (..), TriggerR
+    , yield, flop, check, chain, (<||>)
     , runTriggerM
     ) where
 
-import Control.Monad
-import Control.Monad.Trans
-import Control.Monad.Coroutine
-
 import Data.Monoid
 import Control.Applicative
+import Control.Monad
+import Control.Monad.Trans
 
--- | Monad transformer for trigger functions.
-newtype TriggerM i o m r = TriggerM (Coroutine (TriggerF i o) m r)
-    deriving (Monad, Functor)
+data TriggerM a b m r =
+    Pure r
+  | M (m (TriggerM a b m r))
+  | Suspend (TriggerSuspension a b m r)
 
--- | Continuation functor for TriggerM
-data TriggerF i o r = Yield o (i -> r)
-                    | Flop
+data TriggerSuspension a b m r =
+    Flop
+  | Check (a -> TriggerM a b m r)
+  | Yield b (a -> TriggerM a b m r)
 
--- | Result type for runTriggerM
-type TriggerR i o m r = Either (TriggerF i o (TriggerM i o m r)) r
+instance (Monad m) => Functor (TriggerM a b m) where
+    fmap f c = case c of
+        Pure r               -> Pure $ f r
+        M mc                 -> M $ liftM (fmap f) mc
+        Suspend Flop         -> Suspend $ Flop
+        Suspend (Check fc)   -> Suspend $ Check $ fmap (fmap f) fc
+        Suspend (Yield x fc) -> Suspend $ Yield x $ fmap (fmap f) fc
 
-instance Functor (TriggerF x f) where
-    fmap f (Yield x g) = Yield x $ f . g
-    fmap f Flop        = Flop
+instance (Monad m) => Monad (TriggerM a b m) where
+    return = Pure
+    m >>= f = case m of
+        Pure r               -> f r
+        M mc                 -> M $ liftM (>>= f) mc
+        Suspend Flop         -> Suspend $ Flop
+        Suspend (Check fc)   -> Suspend $ Check $ liftM (>>= f) fc
+        Suspend (Yield x fc) -> Suspend $ Yield x $ liftM (>>= f) fc
 
-instance MonadTrans (TriggerM i o) where
-    lift = TriggerM . lift
+type TriggerR a b m r = Either (TriggerSuspension a b m r) r
+
+instance MonadTrans (TriggerM a b) where
+    lift = M . liftM Pure
 
 -- | Yield a value, suspend the trigger and wait for the next input.
 yield :: (Monad m) => o -> TriggerM i o m i
-yield x = TriggerM $ suspend $ Yield x return
+yield x = Suspend $ Yield x (return . id)
 
 -- | Signal failure of a trigger.
 flop :: (Monad m) => TriggerM i o m r
-flop = TriggerM $ suspend $ Flop
+flop = Suspend Flop
+
+-- | Resume from here if the trigger flops.
+check :: (Monad m) => TriggerM i o m i
+check = Suspend $ Check (return . id)
 
 -- | Repeat one trigger ad infinitum.
 chain :: (Monad m) => (i -> TriggerM i o m i) -> (i -> TriggerM i o m r2)
@@ -45,11 +61,10 @@ chain t = t >=> chain t
 
 -- | Run the trigger monad.
 runTriggerM :: (Monad m) => TriggerM i o m r -> m (TriggerR i o m r)
-runTriggerM (TriggerM cr) = mmap (mapLeft (fmap TriggerM)) (resume cr)
-    where mmap f x = x >>= return . f
-          mapLeft f e = case e of
-                Left v  -> Left $ f v
-                Right v -> Right v
+runTriggerM t = case t of
+    Pure r    -> return $ Right r
+    M m       -> m >>= runTriggerM
+    Suspend x -> return $ Left x
 
 instance (Monad m) => MonadPlus (TriggerM i o m) where
     mzero = flop
@@ -58,6 +73,7 @@ instance (Monad m) => MonadPlus (TriggerM i o m) where
         case r1 of
             Right v          -> return v
             Left (Yield x g) -> yield x >>= g
+            Left (Check g)   -> check >>= (\x -> g x `mplus` b)
             Left Flop        -> b
 
 -- | Choice for Kleisli functionn. Try the first function; if it fails, try
