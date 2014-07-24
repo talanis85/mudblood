@@ -15,6 +15,13 @@ build-type:          Simple
 -- extra-source-files:  
 cabal-version:       >=1.10
 
+test-suite test-trigger
+  type:                detailed-0.9
+  test-module:         Trigger
+  hs-source-dirs:      test
+  build-depends:       mudblood-core >=0.1, base >=4.5 && <4.6, mtl >=2.1 && <2.2, HUnit >=1.2.4, Cabal >=1.20
+  default-language:    Haskell2010
+
 library
   exposed-modules:     Mudblood
                      , Mudblood.Class
@@ -29,10 +36,10 @@ library
                      , Data.Menu
                      , Control.DynCallback
                      , Control.Trigger
-  other-modules:       Mudblood.Utils
                      , Control.Trigger.Monad
                      , Control.Trigger.Arrow
                      , Control.Trigger.Aux
+  other-modules:       Mudblood.Utils
   default-extensions:  MultiParamTypeClasses
   other-extensions:    GeneralizedNewtypeDeriving
                      , UndecidableInstances
