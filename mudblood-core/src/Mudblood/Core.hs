@@ -6,6 +6,7 @@ module Mudblood.Core
     , TriggerEvent (..)
     , triggerReceive, triggerSend, triggerTime, triggerGMCP, triggerTelnet
 
+    , gmcpHello
     ) where
 
 import Control.Monad
@@ -26,6 +27,8 @@ import Data.List
 import Data.List.Split
 import Data.String.Utils
 import Data.GMCP
+
+import qualified Codec.Binary.UTF8.String as UTF8
 
 --------------------------------------------------------------------------------------------------
 
@@ -48,6 +51,7 @@ defaultTrigger ev = case ev of
     SendEvent line -> send line
     BellEvent      -> return ()
     TelnetEvent t  -> handleTelnetTEvent t
+    GMCPEvent g    -> echo $ toAS $ show g
     _               -> return ()
   where
     handleTelnetTEvent t = case t of
@@ -90,8 +94,26 @@ triggerTime = trigger . TimeEvent
 
 -- | Trigger a TelnetEvent.
 triggerTelnet :: (Game s m) => TelnetNeg -> m ()
-triggerTelnet = trigger . TelnetEvent
+triggerTelnet neg = case neg of
+    TelnetNeg (Just CMD_SB) (Just OPT_GMCP) dat ->
+        case parseGMCP $ UTF8.decode dat of
+            Nothing -> throwError $ stackTrace "core" "Received invalid GMCP"
+            Just gmcp -> triggerGMCP gmcp
+    _ -> trigger $ TelnetEvent neg
 
 -- | Trigger a GMCPEvent.
 triggerGMCP :: (Game s m) => GMCP -> m ()
 triggerGMCP = trigger . GMCPEvent
+
+--------------------------------------------------------------------------------------------------
+
+gmcpHello :: [String]           -- ^ A list of supported GMCP modules
+          -> [Communication]
+gmcpHello supports =
+    [ Communication $ TelnetNeg (Just CMD_DO) (Just OPT_GMCP) []
+    , Communication $ GMCP "Core.Hello" $
+        JSObject $ toJSObject [ ("client", JSString $ toJSString "mudblood"),
+                                ("version", JSString $ toJSString "0.1") -- TODO: Configure this somehow
+                              ]
+    , Communication $ GMCP "Core.Supports.Set" $ JSArray $ map (JSString . toJSString) supports
+    ]

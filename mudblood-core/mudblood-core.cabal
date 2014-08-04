@@ -37,8 +37,7 @@ library
                      , Control.DynCallback
                      , Control.Trigger
                      , Control.Trigger.Monad
-                     , Control.Trigger.Arrow
-                     , Control.Trigger.Aux
+                     , Control.Trigger.Prelude
   other-modules:       Mudblood.Utils
   default-extensions:  MultiParamTypeClasses
   other-extensions:    GeneralizedNewtypeDeriving

@@ -1,20 +1,24 @@
 module Control.Trigger
-    ( TriggerM
-    , Trigger, trig, pure
-    , EndoTrigger
-    , runEndoTrigger
-    , (>:>), (<||>)
-    , yield, flop, check
-    , static, chain
+    ( Trigger, runTrigger
+    , MonadTrigger (..)
+    , done, feed, keep
+    , trig, trig'
+    , EndoTrigger, FailingTrigger, FailingEndoTrigger
+    , Transformer
+    , Handler, EndoHandler, FailingHandler, FailingEndoHandler
+    , Void
+    , failing
+    , collate, filterLeft, filterRight
+    , (>--->), (>--?>), (>?-->), (>?-?>)
+    , (>===>), (>==?>), (>?==>), (>?=?>), (>===*>), (>==?*>), (>?==*>), (>?=?*>)
+    , combine
+    , Fallible
+    , flop, try, try', tryWith
 
-    , singleton
-    , forever
+    , mapYield, mapYieldMaybe, mapAwait, mapAwaitMaybe
+
+    , module Control.Trigger.Prelude
     ) where
 
-import Control.Monad
 import Control.Trigger.Monad
-import Control.Trigger.Arrow
-import Control.Trigger.Aux
-
-import Control.Monad.State
-import Control.Monad.Trans
+import Control.Trigger.Prelude
