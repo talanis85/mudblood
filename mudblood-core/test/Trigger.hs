@@ -17,29 +17,12 @@ import Debug.Trace
 
 -----------------------------------------------------------------------------
 
--- wrapMaybe = wrap (id, Just)
-
------------------------------------------------------------------------------
-
-hunitTests = HU.TestList [ simpleTests ] -- , complexTests, monadplusTests, postCombiTests ]
+hunitTests = HU.TestList [ simpleTests ] -- , monadplusTests, postCombiTests ]
 
 simpleTests = HU.TestLabel "-- BASIC --" $ HU.TestList
     [ HU.TestLabel "Yield constant"   $ triggerTest [1,2,3] [1,1,1] $
         trig' $ const 1
     ]
-
-        {-
-complexTests = HU.TestLabel "-- COMPLEX --" $ HU.TestList
-    [ HU.TestLabel "wrapT . forever"   $ triggerTest [Just 1, Just 2, Just 3, Nothing, Just 4] [Just 11, Just 12, Just 13, Nothing, Just 14] $
-        collate $ wrapMaybe $ forever $ trig $ Right . (+10)
-    , HU.TestLabel "forever . wrapT"   $ triggerTest [Just 1, Just 2, Just 3, Nothing, Just 4] [Just 11, Just 12, Just 13, Nothing, Just 14] $
-        collate $ forever $ wrapMaybe $ trig $ Right . (+10)
-    , HU.TestLabel "forever . wrapT (with >=?>)"   $ triggerTest [Just 1, Just 5, Just 6, Nothing, Just 3] [Just 1, Just 15, Just 16, Nothing, Just 3] $
-        collate $ forever $ wrapMaybe $ try $ check (>4) >=> succeed . (+10)
-    , HU.TestLabel "wrapT . forever (with >=?>)"   $ triggerTest [Just 1, Just 5, Just 6, Nothing, Just 3] [Just 1, Just 15, Just 16, Nothing, Just 3] $
-        collate $ wrapMaybe $ forever $ try $ check (>4) >=> succeed . (+10)
-    ]
-        -}
 
 -----------------------------------------------------------------------------
 
