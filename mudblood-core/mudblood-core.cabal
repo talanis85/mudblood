@@ -32,6 +32,8 @@ library
                      , Mudblood.Screen.Simple
                      , Mudblood.Telnet
                      , Mudblood.Trigger
+                     , Mudblood.Mapper
+                     , Mudblood.UserData
                      , Data.GMCP
                      , Data.Menu
                      , Control.DynCallback
@@ -39,6 +41,8 @@ library
                      , Control.Trigger.Monad
                      , Control.Trigger.Prelude
   other-modules:       Mudblood.Utils
+                     , Mudblood.Mapper.Map
+                     , Mudblood.Mapper.Walk
   default-extensions:  MultiParamTypeClasses
   other-extensions:    GeneralizedNewtypeDeriving
                      , UndecidableInstances
@@ -53,5 +57,6 @@ library
                      , json >=0.7 && <0.8, stm >=2.4 && <2.5, time >=1.4 && <1.5
                      , MissingH >=1.2 && <1.3, bifunctors >=4.1 && <4.2
                      , Cabal >=1.20 && <1.21, HUnit >=1.2 && <1.3, monad-coroutine >=0.8 && <0.9
+                     , fgl
   hs-source-dirs:      src
   default-language:    Haskell2010
