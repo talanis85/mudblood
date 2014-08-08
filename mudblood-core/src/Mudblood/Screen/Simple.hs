@@ -50,6 +50,7 @@ instance MB SimpleScreen SimpleScreen where
         outputMessage "SEND" $ show (Communication s)
         sendToCurrentSocket s
     echo s = outputMessage "ECHO" $ fromAS s
+    time = gets scrTime
 
 -----------------------------------------------------------------------------
 
@@ -60,6 +61,7 @@ data ScreenState = ScreenState
     , scrPrompt         :: String
     , scrAttr           :: Attr
     , scrMode           :: Mode
+    , scrTime           :: Ticks
     }
 
 data Mode = NormalMode
@@ -68,6 +70,7 @@ data Mode = NormalMode
 initSimpleScreen :: IO ScreenState
 initSimpleScreen = do
     chan <- newTChanIO
+    t <- getPOSIXTime
     forkIO $ inputLoop chan
     forkIO $ timerLoop chan
     return $ ScreenState
@@ -77,6 +80,7 @@ initSimpleScreen = do
         , scrEventChan = chan
         , scrQuit = False
         , scrMode = NormalMode
+        , scrTime = floor $ toRational t
         }
 
 -----------------------------------------------------------------------------
@@ -113,7 +117,9 @@ loopSimpleScreen = do
                                   g str
             SCloseEvent          -> return ()
             STelnetEvent neg     -> triggerTelnet neg
-            STimeEvent t         -> triggerTime t
+            STimeEvent t         -> do
+                                    liftScreen $ modify $ \st -> st { scrTime = t }
+                                    triggerTime t
             _                   -> return ()
 
 -----------------------------------------------------------------------------

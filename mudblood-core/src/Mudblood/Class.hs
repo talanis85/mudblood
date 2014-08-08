@@ -1,6 +1,7 @@
 {-# LANGUAGE FunctionalDependencies, FlexibleContexts, FlexibleInstances, UndecidableInstances #-}
 module Mudblood.Class
     ( MB (..)
+    , Ticks
     , prompt, throw, bind, menu
     ) where
 
@@ -19,6 +20,8 @@ import Data.Menu
 
 --------------------------------------------------------------------------------------------------
 
+type Ticks = Int
+
 -- | Provides I/O primitives. A 'Game' monad must be an instance of 'MB'
 class (Monad m, MonadError StackTrace m, Monad s, Typeable1 m) => MB s m | m -> s where
     -- | Lift an action from the underlying screen monad.
@@ -35,6 +38,8 @@ class (Monad m, MonadError StackTrace m, Monad s, Typeable1 m) => MB s m | m -> 
     echo :: AttrString -> m ()
     -- | Send something to the server.
     send :: (Sendable a) => a -> m ()
+    -- | Get the current time in ticks.
+    time :: m Ticks
 
 -- | Prompt for user input. Takes a prompt string and a callback to handle the input.
 prompt :: (MB s m) => String -> (String -> m ()) -> m ()
@@ -63,3 +68,4 @@ instance (MB s m, Typeable x) => MB s (StateT x m) where
     connect h p = lift $ connect h p
     echo = lift . echo
     send = lift . send
+    time = lift $ time
