@@ -2,7 +2,7 @@
 
 module Mudblood.Core
     ( Game (..)
-    , defaultTrigger
+    , defaultTrigger, defaultTriggerVerbose
     , TriggerEvent (..)
     , triggerReceive, triggerSend, triggerTime, triggerGMCP, triggerTelnet
 
@@ -47,6 +47,21 @@ class (MB s m) => Game s m where
 --   This should be called after all custom processing.
 defaultTrigger :: (Game s m) => TriggerEvent -> m ()
 defaultTrigger ev = case ev of
+    LineEvent line -> echo line
+    SendEvent line -> send line
+    BellEvent      -> return ()
+    TelnetEvent t  -> handleTelnetTEvent t
+    GMCPEvent g    -> return ()
+    _               -> return ()
+  where
+    handleTelnetTEvent t = case t of
+        TelnetNeg (Just CMD_DO) (Just OPT_TIMING_MARK) _ ->
+            send $ TelnetNeg (Just CMD_WILL) (Just OPT_TIMING_MARK) []
+        _ -> return ()
+
+-- | Like 'defaultTrigger', but more verbose.
+defaultTriggerVerbose :: (Game s m) => TriggerEvent -> m ()
+defaultTriggerVerbose ev = case ev of
     LineEvent line -> echo line
     SendEvent line -> send line
     BellEvent      -> return ()
