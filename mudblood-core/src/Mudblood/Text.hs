@@ -32,6 +32,8 @@ import Text.ParserCombinators.Parsec.Language (haskellDef)
 
 import Debug.Trace
 
+import GHC.Exts
+
 data Style = StyleNormal | StyleBold | StyleUnderline
     deriving (Show, Eq)
 
@@ -100,6 +102,9 @@ withStyle s a = a { attrStyle = s }
 
 newtype AttrString = AttrString { getAttrString :: [(Char, Attr)] }
     deriving (Eq)
+
+instance IsString AttrString where
+    fromString = toAS
 
 instance Monoid AttrString where
     mempty = AttrString []
