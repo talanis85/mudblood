@@ -304,21 +304,21 @@ instance (MonadTrigger a b m) => MonadTrigger a b (Fallible m) where
     yield x = lift $ yield x
     await = lift await
 
-keep :: (MonadTrigger a (Either a a) m) => (a -> m r) -> (a -> m r)
+keep :: (MonadTrigger a a m) => (a -> m r) -> (a -> m r)
 keep f x = do
     r <- f x
-    yield $ Right x
+    yield x
     return r
 
 -- | @try f@ awaits a value and runs @f@. If that fails, yield
 --   Nothing and retry.
-try :: (MonadTrigger a (Either a b) m) => (a -> Fallible m r) -> m r
+try :: (Monad m) => (a -> Fallible (Trigger a b m) r) -> FailingTrigger a b m r
 try f = do
     x <- await
-    runFallible (f x) >>= maybe (yield (Left x) >> try f) return
+    mapYield Right (runFallible (f x)) >>= maybe (yield (Left x) >> try f) return
 
-try' :: (MonadTrigger a (Either a b) m) => (a -> Fallible m b) -> m ()
+try' :: (Monad m) => (a -> Fallible (Trigger a r m) r) -> FailingTrigger a r m ()
 try' f = try f >>= yield . Right
 
-tryWith :: (MonadTrigger a (Either a b) m) => (a -> Bool) -> m a
+tryWith :: (Monad m) => (a -> Bool) -> FailingTrigger a b m a
 tryWith f = try $ \x -> guard (f x) >> return x
