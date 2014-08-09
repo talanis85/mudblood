@@ -182,7 +182,7 @@ a >--?> b = failing a >?-?> b
 a >?-?> b = case (a, b) of
     ( Pure r,        b             ) -> b
     ( a,             Pure r        ) -> a
-    ( Yield (x, f),  Await g       ) -> case x of Left x  -> Yield (Left x, f >?-?> b)
+    ( Yield (x, f),  Await g       ) -> case x of Left x  -> f >?-?> g x
                                                   Right x -> f >?-?> g x
     ( a,             Yield (x, f)  ) -> Yield (x, a >?-?> f)
     ( M m,           b             ) -> lift m >>= (\x -> x >?-?> b)
