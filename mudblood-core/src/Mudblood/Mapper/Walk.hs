@@ -24,6 +24,7 @@ walker :: (MB scr m)
        -> [String]                                      -- ^ The path to walk
        -> FailingEndoTrigger TriggerEvent m ()
 
+walker f [] = return ()
 walker f (x:xs) = do
     succeed $ SendEvent x
     (ev, ret) <- try $ stack f
