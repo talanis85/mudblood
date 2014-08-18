@@ -8,6 +8,7 @@ module Mudblood.Trigger
     -- ** Guards
     , guardLine, guardSend, guardTime, guardTelnet, guardGMCP
     , guardBlock, guardBlockGag, joinBlock
+    , awaitBlock
     -- ** Wraps
     , wrapLine, wrapSend
     -- ** Yielding
@@ -81,6 +82,15 @@ guardBlockGag ev = readBlock [] ev
             TelnetEvent (TelnetNeg (Just CMD_EOR) Nothing []) -> return acc
             LineEvent s -> await >>= readBlock (acc ++ [s])
             _ -> flop
+
+awaitBlock :: (Monad m) => FailingEndoTrigger TriggerEvent m [AttrString]
+awaitBlock = awaitBlock' []
+    where awaitBlock' acc = do
+            x <- await
+            case x of
+                TelnetEvent (TelnetNeg (Just CMD_EOR) Nothing []) -> pass x >> return acc
+                LineEvent s -> pass x >> awaitBlock' (acc ++ [s])
+                _ -> pass x >> awaitBlock' acc
 
 -----------------------------------------------------------------------------
 
