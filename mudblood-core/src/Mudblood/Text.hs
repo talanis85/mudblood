@@ -10,10 +10,11 @@ module Mudblood.Text
     -- * Conversion to and from strings
     , decodeAS, toAS, fromAS
     -- * Misc transformations
-    , (<>)
+    , (<>), mapAS
     , groupAS
     , wrapAS, untabAS
     , linesAS
+    , appendAligned
     -- * Setting attributes
     , setFg, setBg, setStyle
     -- * Colors
@@ -180,6 +181,10 @@ linesAS (AttrString as) = map AttrString $ splitWhen ((== '\n') . fst) as
 reverseBreak :: (a -> Bool) -> [a] -> ([a], [a])
 reverseBreak f xs = (reverse before, reverse after)
   where (after, before) = break f $ reverse xs
+
+appendAligned :: AttrString -> Int -> AttrString -> AttrString
+appendAligned a1@(AttrString s1) n a2 = a1 <> (toAS $ take fillers $ repeat ' ') <> a2
+    where fillers = max 0 $ n - length s1
 
 -- | Convert a string with ANSI sequences to an AttrString.
 decodeAS :: String                      -- ^ The input string - may contain ANSI
