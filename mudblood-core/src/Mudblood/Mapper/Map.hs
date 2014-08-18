@@ -206,19 +206,21 @@ mapModifyCurrentId f m = m { mapCurrentId = f (mapCurrentId m) }
 mapModifyGraph :: (MapGraph -> MapGraph) -> (Map -> Map)
 mapModifyGraph f m = m { mapGraph = f (mapGraph m) }
 
-getExitData :: Int -> String -> MapGraph -> Maybe ExitData
-getExitData r e m =
+getExitData :: Int -> String -> Maybe String -> MapGraph -> Maybe ExitData
+getExitData r e l m =
     case filter exitFilter (out m r) of
             [] -> Nothing
             ((a,b,label):_) -> Just label
   where
-    exitFilter (a,b,label) = (exitKey label) == e
+    exitFilter (a,b,label) = case l of
+        Nothing -> (exitKey label) == e
+        Just l  -> (exitKey label) == e && (exitLayer label) == l
 
 getRoomData :: Int -> MapGraph -> Maybe RoomData
 getRoomData r m = lab m r
 
-mapGetExitData :: Int -> String -> MapGraph -> UserData
-mapGetExitData room ex m = fromMaybe M.empty $ fmap exitUserData $ getExitData room ex m
+mapGetExitData :: Int -> String -> Maybe String -> MapGraph -> UserData
+mapGetExitData room ex layer m = fromMaybe M.empty $ fmap exitUserData $ getExitData room ex layer m
 
 mapGetRoomData :: Int -> MapGraph -> UserData
 mapGetRoomData room m = fromMaybe M.empty $ fmap roomUserData $ getRoomData room m
@@ -230,15 +232,19 @@ mapModifyRoomData node f = gmap (modifyRoom node f)
             | node == n = (i, n, l { roomUserData = f (roomUserData l) }, o)
             | otherwise = ctx
 
-mapModifyExitData :: Node -> String -> (UserData -> UserData) -> MapGraph -> MapGraph
-mapModifyExitData node key f = gmap (modifyRoom node f)
+mapModifyExitData :: Node -> String -> Maybe String -> (UserData -> UserData) -> MapGraph -> MapGraph
+mapModifyExitData node key layer f = gmap (modifyRoom node f)
     where
         modifyRoom node f ctx@(i, n, l, o)
             | node == n = (i, n, l, map (modifier f) o)
             | otherwise = ctx
-        modifier f (label, a)
-            | exitKey label == key = (label { exitUserData = f (exitUserData label) }, a)
-            | otherwise = (label, a)
+        modifier f (label, a) = case layer of
+            Just layer -> if exitKey label == key && exitLayer label == layer
+                            then (label { exitUserData = f (exitUserData label) }, a)
+                            else (label, a)
+            Nothing    -> if exitKey label == key
+                            then (label { exitUserData = f (exitUserData label) }, a)
+                            else (label, a)
 
 mapFindRoomsBy :: (UserData -> Bool) -> MapGraph -> [Node]
 mapFindRoomsBy f m =
