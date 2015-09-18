@@ -1,28 +1,28 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleContexts, FunctionalDependencies #-}
 
 module Mudblood.Core
     ( Game (..)
-    , defaultTrigger, defaultTriggerVerbose
-    , TriggerEvent (..)
-    , triggerReceive, triggerSend, triggerTime, triggerGMCP, triggerTelnet
+    , handleLine, handleSend, handlePrompt, handleTelnet, handleInfo
+    , decode
+    , telnetToGMCP
 
     , gmcpHello
     ) where
 
 import Control.Monad
 import Control.Monad.State
+import Control.Monad.Trans.Maybe
 import Control.Monad.Error
-
-import Control.DynCallback
 
 import Mudblood.Class
 import Mudblood.Text
-import Mudblood.Telnet
+import Mudblood.Telnet (TelnetNeg (..), TelnetCommand (..), Communication (..), TelnetOption (..))
 import Mudblood.Error
 import Mudblood.Utils
-import Mudblood.Trigger
 
 import Data.Maybe
+import Data.Char
+import Data.Word
 import Data.List
 import Data.List.Split
 import Data.String.Utils
@@ -34,94 +34,53 @@ import qualified Codec.Binary.UTF8.String as UTF8
 
 -- | The Game class. Every monad that runs a game must be an instance of 'Game'.
 --   Here, we define custom behavior like triggers or key handlers.
-class (MB s m) => Game s m where
+class (MB s m) => Game s m | m -> s where
     -- | This is called on every trigger-enabled event. See 'TriggerEvent' for possible events.
-    trigger :: TriggerEvent -> m ()
-
-    -- | Used by the screen to periodically query for a status line.
-    queryStatus :: m String
-
---------------------------------------------------------------------------------------------------
-
--- | Provides suitable defaults how TriggerEvents should be handled.
---   This should be called after all custom processing.
-defaultTrigger :: (Game s m) => TriggerEvent -> m ()
-defaultTrigger ev = case ev of
-    LineEvent line -> echo line
-    SendEvent line -> send line
-    BellEvent      -> return ()
-    TelnetEvent t  -> handleTelnetTEvent t
-    GMCPEvent g    -> return ()
-    _               -> return ()
-  where
-    handleTelnetTEvent t = case t of
-        TelnetNeg (Just CMD_DO) (Just OPT_TIMING_MARK) _ ->
-            send $ TelnetNeg (Just CMD_WILL) (Just OPT_TIMING_MARK) []
-        _ -> return ()
-
--- | Like 'defaultTrigger', but more verbose.
-defaultTriggerVerbose :: (Game s m) => TriggerEvent -> m ()
-defaultTriggerVerbose ev = case ev of
-    LineEvent line -> echo line
-    SendEvent line -> send line
-    BellEvent      -> return ()
-    TelnetEvent t  -> handleTelnetTEvent t
-    GMCPEvent g    -> echo $ toAS $ show g
-    _               -> return ()
-  where
-    handleTelnetTEvent t = case t of
-        TelnetNeg (Just CMD_DO) (Just OPT_TIMING_MARK) _ ->
-            send $ TelnetNeg (Just CMD_WILL) (Just OPT_TIMING_MARK) []
-        _ ->
-            echo (setFg Magenta (toAS $ show t))
+    triggerLine :: AttrString -> m ()
+    triggerSend :: String -> m ()
+    triggerPrompt :: String -> m ()
+    triggerTime :: Int -> m ()
+    triggerTelnet :: TelnetNeg -> m ()
 
 --------------------------------------------------------------------------------------------------
 
--- | Trigger a LineEvent. Also provides line splitting and prompt handling.
---   (Might be refactored some day)
-triggerReceive :: (Game s m)
-               => String               -- ^ Current unprocessed data (prompt)
-               -> String               -- ^ New data
-               -> Attr                 -- ^ Last known attribute state
-               -> m (String, Attr)     -- ^ Remaining unprocessed data and resulting attribute state
-triggerReceive oldprompt input oldattr =
-    let (ls, newprompt)      = splitLinesWithPrompt oldprompt input
-        (eventList, newattr) = foldr decodeFold ([], oldattr) ls
-    in mapM_ trigger eventList >> return (newprompt, newattr)
-  where
-    decodeFold cur (l, a) = let (cur', add) = processChars cur
-                                (line, attr) = fromMaybe (toAS ("[ERROR]" ++ cur'), a) (decodeAS cur' a)
-                            in ((LineEvent line):(add ++ l), attr)
-    processChars s = foldr f ("", []) s
-      where
-        f c (str, add) =
-            case c of
-                '\a' -> (str, BellEvent : add)
-                x    -> (x:str, add)
+handleLine :: (Game s m) => AttrString -> m ()
+handleLine = echo
 
--- | Trigger a SendEvent.
-triggerSend :: (Game s m) => String -> m ()
-triggerSend = trigger . SendEvent
+handleSend :: (Game s m) => String -> m ()
+handleSend = send
 
--- | Trigger a TimeEvent.
-triggerTime :: (Game s m) => Int -> m ()
-triggerTime = trigger . TimeEvent
+handlePrompt :: (Game s m) => String -> m ()
+handlePrompt = setPrompt
 
--- | Trigger a TelnetEvent.
-triggerTelnet :: (Game s m) => TelnetNeg -> m ()
-triggerTelnet neg = case neg of
-    TelnetNeg (Just CMD_SB) (Just OPT_GMCP) dat ->
-        case parseGMCP $ UTF8.decode dat of
-            Nothing -> throwError $ stackTrace "core" "Received invalid GMCP"
-            Just gmcp -> triggerGMCP gmcp
-    _ -> trigger $ TelnetEvent neg
+handleTelnet :: (Game s m) => TelnetNeg -> m ()
+handleTelnet t = case t of
+  TelnetNeg (Just CMD_DO) (Just OPT_TIMING_MARK) _ ->
+      send $ TelnetNeg (Just CMD_WILL) (Just OPT_TIMING_MARK) []
+  _ -> return ()
 
--- | Trigger a GMCPEvent.
-triggerGMCP :: (Game s m) => GMCP -> m ()
-triggerGMCP = trigger . GMCPEvent
+handleInfo :: (Game s m) => String -> m ()
+handleInfo = echoInfo
+
+decode :: [Word8] -> [Word8] -> Attr -> ([AttrString], [Word8], Attr)
+decode oldprompt input oldattr =
+    let (ls, newprompt)   = splitLinesWithPrompt 10 oldprompt input
+        (attrls, newattr) = foldl decodeFold ([], oldattr) ls
+    in (attrls, newprompt, newattr)
+  where decodeFold (l, a) cur =
+          let (next, a') = case decodeAS cur a of
+                Nothing      -> ((toAS $ "Error decoding ANSI: " ++ escapeAll cur), a)
+                Just (s, a') -> (s, a')
+          in (l ++ [next], a')
+
+telnetToGMCP :: TelnetNeg -> Maybe GMCP
+telnetToGMCP t = case t of
+  TelnetNeg (Just CMD_SB) (Just OPT_GMCP) dat -> parseGMCP $ UTF8.decode dat
+  _ -> Nothing
 
 --------------------------------------------------------------------------------------------------
 
+-- | Send a standard GMCP hello.
 gmcpHello :: [String]           -- ^ A list of supported GMCP modules
           -> [Communication]
 gmcpHello supports =

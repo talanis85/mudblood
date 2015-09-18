@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, TypeSynonymInstances, FlexibleInstances, ExistentialQuantification #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, TypeSynonymInstances, FlexibleInstances, ExistentialQuantification, DeriveGeneric #-}
 
 module Mudblood.Telnet
     ( TelnetSocket
@@ -19,25 +19,30 @@ module Mudblood.Telnet
     , telnetNegNaws
 ) where
 
+import Prelude hiding (getContents)
+
 import Data.Word
+import Data.GMCP
 
 import Control.Exception
-
 import Control.Monad.Writer
 import Control.Monad.State
-
 import Control.Concurrent
 
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString as B
-import Data.Binary.Put
-
-import Data.GMCP
-
 import qualified Codec.Binary.UTF8.String as UTF8
 
 import Network.Socket hiding (send, sendTo, recv, recvFrom)
-import Network.Socket.ByteString
+import Network.Socket.ByteString.Lazy
+
+import Data.Binary.Put
+import GHC.Generics
+import Data.Serialize (Serialize)
+
+instance Serialize TelnetCommand
+instance Serialize TelnetOption
+instance Serialize TelnetNeg
 
 -- | Telneg commands
 data TelnetCommand = CMD_UNKNOWN Word8
@@ -49,7 +54,7 @@ data TelnetCommand = CMD_UNKNOWN Word8
                    | CMD_SB
                    | CMD_SE
                    | CMD_NOP
-    deriving (Show, Eq)
+    deriving (Show, Eq, Generic)
 
 toTelnetCommand :: (Integral a) => a -> TelnetCommand
 toTelnetCommand x = case x of
@@ -81,7 +86,7 @@ data TelnetOption = OPT_UNKNOWN Word8
                   | OPT_EOR
                   | OPT_NAWS
                   | OPT_GMCP
-    deriving (Show, Eq)
+    deriving (Show, Eq, Generic)
 
 toTelnetOption :: (Integral a) => a -> TelnetOption
 toTelnetOption x = case x of
@@ -106,7 +111,7 @@ data TelnetNeg = TelnetNeg {
     tnCommand :: Maybe TelnetCommand,
     tnOption :: Maybe TelnetOption,
     tnData :: [Word8]
-} deriving (Eq)
+} deriving (Eq, Generic)
 
 instance Show TelnetNeg where
     show (TelnetNeg cmd opt dat) = "Telneg: " ++ cmd' ++ " " ++ opt' ++ " " ++ (show dat)
@@ -162,7 +167,6 @@ telnegParse state ch = do
 
 data TelnetState = TelnetState {
     tnParsed :: [Word8],
-    tnRemaining :: [Word8],
     tnTelnegState :: TelnegState
 } deriving (Show)
 
@@ -170,42 +174,24 @@ data TelnetBlock = TelnetRawBlock [Word8]
                  | TelnetNegBlock TelnetNeg
     deriving (Show)
 
-tnFeed :: TelnetState -> [Word8] -> (TelnetState, [TelnetBlock])
-tnFeed state xs = runWriter $ parse state { tnRemaining = ((tnRemaining state) ++ xs) }
-    where
-        parse state = 
-              case tnRemaining state of
-                   []   -> do
-                           when ((tnParsed state) /= []) $ tell [TelnetRawBlock (tnParsed state)]
-                           return state { tnParsed = [] }
-                   (x:xs) -> let newstate = state { tnRemaining = xs }
-                             in case telnegParse (tnTelnegState state) x of
-                                     (tnstate, TelnegNone) ->
-                                        parse $ newstate {
-                                           tnParsed = case x of
-                                                8    -> take (max 0 (length (tnParsed newstate) - 1)) (tnParsed newstate)
-                                                _    -> (tnParsed newstate) ++ [x]
-                                                ,
-                                           tnTelnegState = tnstate
-                                        }
-                                     (tnstate, TelnegPartial) ->
-                                        do
-                                        when ((tnParsed newstate) /= []) $ tell [TelnetRawBlock (tnParsed newstate)]
-                                        parse $ newstate {
-                                           tnTelnegState = tnstate,
-                                           tnParsed = []
-                                        }
-                                     (tnstate, TelnegComplete tn) ->
-                                        do
-                                        tell [TelnetNegBlock tn]
-                                        parse $ newstate {
-                                            tnTelnegState = tnstate
-                                        }
+tnFold :: ([TelnetBlock], [Word8], TelnegState) -> Word8 -> ([TelnetBlock], [Word8], TelnegState)
+tnFold (bs, cs, st) c = case telnegParse st c of
+     (st', TelnegNone)        -> (bs, cs ++ [c], st')
+     (st', TelnegPartial)     -> if cs == [] then (bs, [], st')
+                                             else (bs ++ [TelnetRawBlock (filterSpecials cs)], [], st')
+     (st', TelnegComplete tn) -> if cs == [] then (bs ++ [TelnetNegBlock tn], [], st')
+                                             else (bs ++ [TelnetRawBlock (filterSpecials cs), TelnetNegBlock tn], [], st')
+
+filterSpecials = filterCR . filterBackspace
+
+filterCR = filter (/= 13)
+
+filterBackspace [] = []
+filterBackspace (x:8:r) = filterBackspace r
+filterBackspace (x:xs) = x : filterBackspace xs
 
 tnInit :: TelnetState
-tnInit = TelnetState [] [] TelnegStateOff
-
-
+tnInit = TelnetState [] TelnegStateOff
 
 type TelnetSocket = Socket
 
@@ -264,13 +250,17 @@ telnetRecv :: TelnetIO (Either String [TelnetBlock])
 telnetRecv =
     do
     state <- get'
-    d <- liftIO $ try $ recv (tnSocket state) 1024 :: TelnetIO (Either IOException B.ByteString)
+    d <- liftIO $ try $ recv (tnSocket state) 1024 :: TelnetIO (Either IOException BL.ByteString)
     case d of
         Left err -> return $ Left "Socket error"
         Right d ->
-            if B.null d then return $ Left "EOF"
-                        else let (st, blocks) = tnFeed (tnState state) $ B.unpack d
-                             in put' (state { tnState = st }) >> return (Right blocks)
+            if BL.null d then return $ Left "EOF"
+                         else do
+                              let ts = tnState state
+                                  (blocks, openBytes, negstate) = BL.foldl tnFold ([], tnParsed ts, tnTelnegState ts) d
+                              put' $ state { tnState = TelnetState { tnParsed = [], tnTelnegState = negstate } }
+                              if openBytes == [] then return $ Right blocks
+                                                 else return $ Right $ blocks ++ [TelnetRawBlock (filterSpecials openBytes)]
   where get' = TelnetIO get
         put' s = TelnetIO $ put s
 
@@ -298,7 +288,7 @@ instance Sendable GMCP where
     toBinary gmcp = toBinary $ telnetSubneg OPT_GMCP $ UTF8.encode $ dumpGMCP gmcp
 
 telnetSend :: TelnetSocket -> Communication -> IO ()
-telnetSend sock (Communication dat) = send sock (B.pack (toBinary dat)) >> return ()
+telnetSend sock (Communication dat) = send sock (BL.pack (toBinary dat)) >> return ()
 
 telnetClose :: TelnetSocket -> IO ()
 telnetClose sock = sClose sock

@@ -6,28 +6,27 @@ module Mudblood.Mapper.Walk
 import Data.List
 import Data.Maybe
 
-import qualified Data.Graph.Inductive as Gr
-
-import Control.Arrow
-
 import Mudblood.Core
 import Mudblood.Class
 import Mudblood.Trigger
-import Mudblood.Mapper.Map
 
 data WalkerControl = WalkerStop
                    | WalkerContinue
+                   | WalkerPause
 
 -- | Trigger to auto-walk from one room to another.
-walker :: (MB scr m)
-       => (TriggerEvent -> Fallible (EndoTrigger TriggerEvent m) WalkerControl) -- ^ Trigger that decides when to continue or stop
-       -> [String]                                      -- ^ The path to walk
-       -> FailingEndoTrigger TriggerEvent m ()
+walker :: (MB scr m, MBEvent a)
+       => (Int -> Iteration (Ev a) m WalkerControl)
+       -> [(String, Int)]
+       -> Trigger (Ev a) m ()
 
 walker f [] = return ()
-walker f (x:xs) = do
-    succeed $ SendEvent x
-    (ev, ret) <- try $ stack f
-    case ret of
-        WalkerStop -> pass ev
-        WalkerContinue -> walker f xs
+walker f ((x,n):xs) = do
+    yieldSend x
+    let walker' = do
+            ret <- oneshot $ f n
+            case ret of
+                WalkerStop -> return ()
+                WalkerContinue -> walker f xs
+                WalkerPause -> walker'
+    walker'

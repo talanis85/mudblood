@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric, StandaloneDeriving, FlexibleInstances #-}
 module Data.GMCP
     ( GMCP (..)
     , parseGMCP
@@ -9,11 +10,23 @@ module Data.GMCP
 import Text.JSON
 import Text.JSON.Types
 
+import GHC.Generics
+import Data.Serialize hiding (encode, decode)
+
 data GMCP = GMCP
     { gmcpModule :: String
     , gmcpData :: JSValue
     }
-  deriving (Eq)
+  deriving (Eq, Generic)
+
+deriving instance Generic JSValue
+deriving instance Generic (JSObject a)
+deriving instance Generic JSString
+
+instance Serialize GMCP
+instance Serialize JSValue
+instance Serialize JSString
+instance Serialize (JSObject JSValue)
 
 instance Show GMCP where
     show (GMCP mod dat) = "GMCP [" ++ mod ++ "]: " ++ (show dat)

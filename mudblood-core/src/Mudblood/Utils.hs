@@ -4,10 +4,10 @@ module Mudblood.Utils
 
 import Data.List.Split
 
-splitLinesWithPrompt :: String -> String -> ([String], String)
-splitLinesWithPrompt oldprompt input =
+splitLinesWithPrompt :: (Eq a) => a -> [a] -> [a] -> ([[a]], [a])
+splitLinesWithPrompt nl oldprompt input =
     case strictLines input of
         (l:[]) -> ([], oldprompt ++ l)
         (l:ls) -> ((oldprompt ++ l) : (init ls), last ls)
   where
-    strictLines str = splitWhen (== '\n') str
+    strictLines str = splitWhen (== nl) str

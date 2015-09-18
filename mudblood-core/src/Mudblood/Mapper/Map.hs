@@ -3,8 +3,7 @@
 module Mudblood.Mapper.Map
     (
     -- * Types
-      Map (..)
-    , MapGraph
+      Map
     , RoomData (..), ExitData (..)
     , mapEmpty, mapFromString
     , mapToString
@@ -15,13 +14,12 @@ module Mudblood.Mapper.Map
     , userValueToStringArray, userValueFromStringArray
     , lookupUserValue
     -- * Transforms and queries
-    , mapModifyCurrentId, mapModifyGraph
-    , mapGetRoomData, mapGetExitData
-    , mapModifyRoomData, mapModifyExitData
-    , mapFindRoomBy, mapFindRoomByIndex
+    , mapRoomData, mapExitData
+    , mapFindRoomBy
     , mapGetExits, mapFindAdjacentRoom
     , mapGetEntrances
     , mapAddExit, mapDeleteExit
+    , mapAddProvisionalExit
     , mapAddRoom, mapDeleteRoom
     -- * Map algorithms
     , mapShortestPath, mapOverlay
@@ -33,6 +31,7 @@ module Mudblood.Mapper.Map
 
 import Prelude hiding (catch)
 import Control.Exception
+import Control.Lens
 
 import Text.JSON
 import Text.JSON.Types
@@ -51,12 +50,12 @@ import Mudblood.UserData
 -- DATA DEFINITIONS
 -----------------------------------------------------------------------------
 
-type MapGraph = Gr RoomData ExitData
+type Map = Gr RoomData ExitData
 
 data RoomData = RoomData
     { roomUserData :: UserData
     }
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 mkRoomData = RoomData
     { roomUserData = M.empty
@@ -68,18 +67,11 @@ data ExitData = ExitData
     { exitLayer :: String
     , exitKey :: String
     , exitUserData :: UserData
+    , exitProvisional :: Bool
     }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 newtype JSExit = JSExit { getJSExit :: LEdge ExitData }
-
-newtype JSUserData = JSUserData { getJSUserData :: UserData }
-
-data Map = Map
-    { mapGraph :: MapGraph
-    , mapCurrentId :: Node
-    , mapRoomIndices :: M.Map String (M.Map UserValue Node)
-    }
 
 -----------------------------------------------------------------------------
 -- CONSTRUCTORS
@@ -87,15 +79,11 @@ data Map = Map
 
 -- | Create an empty map.
 mapEmpty :: Map
-mapEmpty = Map 
-    { mapGraph = mkGraph [(0, mkRoomData)] []
-    , mapCurrentId = 0
-    , mapRoomIndices = M.empty
-    }
+mapEmpty = mkGraph [(0, mkRoomData)] []
 
 -- | Load a map from a string in JSON format.
 mapFromString :: String -> Maybe Map
-mapFromString str = case decode str of
+mapFromString str = case decodeStrict str of
     Ok map -> Just map
     Error _ -> Nothing
 
@@ -121,13 +109,14 @@ instance JSON Map where
         rooms <- valFromObj "rooms" o >>= return . map getJSRoom
         exits <- valFromObj "exits" o >>= return . map getJSExit
         --virtual <- valFromObj "virtual" o
-        return $ mapEmpty { mapGraph = mkGraph rooms exits }
+        return $ mkGraph rooms exits
 
     readJSON _ = fail "Expected object"
 
-    showJSON m = showJSON $ toJSObject [ ("rooms", showJSON $ map JSRoom (labNodes $ mapGraph m))
-                                       , ("exits", showJSON $ map JSExit (labEdges $ mapGraph m))
-                                       ]
+    showJSON m = let g = elfilter (not . exitProvisional) m
+                 in showJSON $ toJSObject [ ("rooms", showJSON $ map JSRoom (labNodes g))
+                                          , ("exits", showJSON $ map JSExit (labEdges g))
+                                          ]
 
 instance JSON JSRoom where
     readJSON (JSObject o) = do
@@ -158,6 +147,7 @@ instance JSON JSExit where
                 { exitLayer    = layer
                 , exitKey      = key
                 , exitUserData = userdata
+                , exitProvisional = False
                 }
 
         return $ JSExit (src, dest, exitData)
@@ -172,41 +162,11 @@ instance JSON JSExit where
                                           , ("key", showJSON $ exitKey d)
                                           ]
 
-instance JSON JSUserData where
-    readJSON (JSObject o) = return $ JSUserData $ M.map toUserValue $ M.fromList $ fromJSObject o
-
-    readJSON _ = fail "Expected object"
-
-    showJSON d = showJSON $ toJSObject $ M.toList $ ((M.map fromUserValue (getJSUserData d)) :: M.Map String JSValue)
-
-------------------------------------------------------------------------------
--- USER DATA
-------------------------------------------------------------------------------
-
-toUserValue JSNull = UserValueNull
-toUserValue (JSBool v) = UserValueBool v
-toUserValue (JSRational _ v) = UserValueRational v
-toUserValue (JSString v) = UserValueString $ fromJSString v
-toUserValue (JSArray v) = UserValueArray $ map toUserValue v
-toUserValue _ = UserValueNull
-
-fromUserValue UserValueNull = JSNull
-fromUserValue (UserValueBool v) = JSBool v
-fromUserValue (UserValueRational v) = JSRational True v
-fromUserValue (UserValueString v) = JSString $ toJSString v
-fromUserValue (UserValueArray v) = JSArray $ map fromUserValue v
-
 ------------------------------------------------------------------------------
 -- TRANSFORMS AND QUERIES
 ------------------------------------------------------------------------------
 
-mapModifyCurrentId :: (Int -> Int) -> (Map -> Map)
-mapModifyCurrentId f m = m { mapCurrentId = f (mapCurrentId m) }
-
-mapModifyGraph :: (MapGraph -> MapGraph) -> (Map -> Map)
-mapModifyGraph f m = m { mapGraph = f (mapGraph m) }
-
-getExitData :: Int -> String -> Maybe String -> MapGraph -> Maybe ExitData
+getExitData :: Int -> String -> Maybe String -> Map -> Maybe ExitData
 getExitData r e l m =
     case filter exitFilter (out m r) of
             [] -> Nothing
@@ -216,23 +176,23 @@ getExitData r e l m =
         Nothing -> (exitKey label) == e
         Just l  -> (exitKey label) == e && (exitLayer label) == l
 
-getRoomData :: Int -> MapGraph -> Maybe RoomData
+getRoomData :: Int -> Map -> Maybe RoomData
 getRoomData r m = lab m r
 
-mapGetExitData :: Int -> String -> Maybe String -> MapGraph -> UserData
+mapGetExitData :: Int -> String -> Maybe String -> Map -> UserData
 mapGetExitData room ex layer m = fromMaybe M.empty $ fmap exitUserData $ getExitData room ex layer m
 
-mapGetRoomData :: Int -> MapGraph -> UserData
+mapGetRoomData :: Int -> Map -> UserData
 mapGetRoomData room m = fromMaybe M.empty $ fmap roomUserData $ getRoomData room m
 
-mapModifyRoomData :: Node -> (UserData -> UserData) -> MapGraph -> MapGraph
+mapModifyRoomData :: Node -> (UserData -> UserData) -> Map -> Map
 mapModifyRoomData node f = gmap (modifyRoom node f)
     where
         modifyRoom node f ctx@(i, n, l, o)
             | node == n = (i, n, l { roomUserData = f (roomUserData l) }, o)
             | otherwise = ctx
 
-mapModifyExitData :: Node -> String -> Maybe String -> (UserData -> UserData) -> MapGraph -> MapGraph
+mapModifyExitData :: Node -> String -> Maybe String -> (UserData -> UserData) -> Map -> Map
 mapModifyExitData node key layer f = gmap (modifyRoom node f)
     where
         modifyRoom node f ctx@(i, n, l, o)
@@ -246,51 +206,68 @@ mapModifyExitData node key layer f = gmap (modifyRoom node f)
                             then (label { exitUserData = f (exitUserData label) }, a)
                             else (label, a)
 
-mapFindRoomsBy :: (UserData -> Bool) -> MapGraph -> [Node]
+mapRoomData :: Node -> Lens' Map UserData
+mapRoomData node = lens (mapGetRoomData node) (\m x -> mapModifyRoomData node (const x) m)
+
+mapExitData :: Node -> String -> Maybe String -> Lens' Map UserData
+mapExitData node key layer = lens (mapGetExitData node key layer) (\m x -> mapModifyExitData node key layer (const x) m)
+
+mapFindRoomsBy :: (UserData -> Bool) -> Map -> [Node]
 mapFindRoomsBy f m =
     let folder ctx accu = if f (roomUserData $ lab' ctx) then (node' ctx) : accu else accu
     in ufold folder [] m
 
-mapFindRoomBy :: (UserData -> Bool) -> MapGraph -> Maybe Node
+mapFindRoomBy :: (UserData -> Bool) -> Map -> Maybe Node
 mapFindRoomBy f m = listToMaybe $ mapFindRoomsBy f m
 
-mapFindRoomByIndex :: String -> UserValue -> Map -> Maybe Node
-mapFindRoomByIndex key val m =
-    join $ fmap (M.lookup val) $ M.lookup key (mapRoomIndices m)
-
-mapGetExits :: Node -> MapGraph -> [(Node, ExitData)]
+mapGetExits :: Node -> Map -> [(Node, ExitData)]
+--mapGetExits room m = lsuc (elfilter (not . exitProvisional) m) room
 mapGetExits room m = lsuc m room
 
-mapFindAdjacentRoom :: Node -> String -> MapGraph -> Maybe Node
+mapFindAdjacentRoom :: Node -> String -> Map -> Maybe Node
 mapFindAdjacentRoom r key m =
     fmap fst $ listToMaybe $ filter ((== key) . exitKey . snd) $ mapGetExits r m
 
-mapGetEntrances :: Node -> MapGraph -> [(Node, ExitData)]
+mapGetEntrances :: Node -> Map -> [(Node, ExitData)]
 mapGetEntrances room m = lpre m room
 
-mapAddExit :: Node -> String -> Node -> String -> MapGraph -> MapGraph
+mapAddExit :: Node -> String -> Node -> String -> Map -> Map
 mapAddExit src key dest layer =
     insEdge (src, dest, ExitData
         { exitLayer = layer
         , exitKey = key
         , exitUserData = M.empty
+        , exitProvisional = False
         })
+    .
+    mapDeleteExit src key layer
 
-mapDeleteExit :: Node -> String -> String -> MapGraph -> MapGraph
+mapAddProvisionalExit :: Node -> String -> Node -> String -> Map -> Map
+mapAddProvisionalExit src key dest layer g =
+    case mapFindAdjacentRoom src key g of
+        Nothing ->
+            insEdge (src, dest, ExitData
+                { exitLayer = layer
+                , exitKey = key
+                , exitUserData = M.empty
+                , exitProvisional = True
+                }) g
+        Just _ -> g
+
+mapDeleteExit :: Node -> String -> String -> Map -> Map
 mapDeleteExit node key layer g =
-    let theEdge = listToMaybe $ filter (isEdge key layer) $ mapGetExits node g
-    in case theEdge of
-        Nothing -> g
-        Just (n, e) -> delLEdge (node, n, e) g
+    let edges = filter (isEdge key layer) $ lsuc g node
+    in foldr deleteIt g edges
   where
+    deleteIt (n, e) g = delLEdge (node, n, e) g
     isEdge key layer (_, d) = key == (exitKey d) && layer == (exitLayer d)
 
-mapAddRoom :: MapGraph -> Maybe (MapGraph, Node)
+mapAddRoom :: Map -> Maybe (Map, Node)
 mapAddRoom g = case newNodes 1 g of
     [] -> Nothing
     (n:_) -> Just (insNode (n, mkRoomData) g, n)
 
-mapDeleteRoom :: Node -> MapGraph -> MapGraph
+mapDeleteRoom :: Node -> Map -> Map
 mapDeleteRoom n = delNode n
 
 ------------------------------------------------------------------------------
@@ -298,17 +275,17 @@ mapDeleteRoom n = delNode n
 ------------------------------------------------------------------------------
 
 -- | Shortest path from one room to another.
-mapShortestPath :: (Real w) => (ExitData -> w) -> Node -> Node -> MapGraph -> [String]
+mapShortestPath :: (Real w) => (ExitData -> w) -> Node -> Node -> Map -> [(String, Node)]
 mapShortestPath weightfun src dest graph =
     case sp src dest (emap weightfun graph) of
         []            -> []
         (first:nodes) -> reverse $ snd $ foldl (foldPath graph) (first, []) nodes
   where
     foldPath graph (s, p) d = let (_, _, edge) = head $ filter (goesTo d) $ out graph s
-                              in (d, (exitKey edge):p)
+                              in (d, ((exitKey edge), d):p)
     goesTo d' (_, d, _) = d == d'
 
-mapOverlay :: [String] -> MapGraph -> MapGraph
+mapOverlay :: [String] -> Map -> Map
 mapOverlay layers gr = gmap (applyLayers layers) gr
   where
     applyLayers layers (i, n, l, o) = (i, n, l, overlay' layers o)
@@ -324,16 +301,11 @@ mapOverlay layers gr = gmap (applyLayers layers) gr
 -- INDEXES
 ------------------------------------------------------------------------------
 
-makeRoomIndex :: MapGraph -> String -> (UserValue -> [UserValue]) -> M.Map UserValue Node
-makeRoomIndex m key f = M.fromList $ concat $ map prepIndex $ labNodes m
+mapGenRoomIndex :: String -> (UserValue -> [UserValue]) -> Map -> M.Map UserValue Node
+mapGenRoomIndex key f m = M.fromList $ concat $ map prepIndex $ labNodes m
     where prepIndex (node, l) = case M.lookup key (roomUserData l) of
             Nothing -> []
             Just x -> map (\y -> (y, node)) (f x)
-
-mapGenRoomIndex :: String -> (UserValue -> [UserValue]) -> Map -> Map
-mapGenRoomIndex key f m = m { mapRoomIndices = M.insert key newRoomIndex (mapRoomIndices m) }
-    where newRoomIndex = makeRoomIndex (mapGraph m) key f
-
 
 ------------------------------------------------------------------------------
 -- MAP DRAWING
@@ -351,11 +323,9 @@ standardExits =
     ]
 getDelta ex = lookup ex standardExits
 
-mapDrawAscii :: Int -> Int -> [String] -> Map -> [String]
-mapDrawAscii w h over m =
-    let cur = mapCurrentId m
-        graph = mapOverlay over $ mapGraph m
-        shiftCoords dx dy = map $ \(x, y, ch) -> (x+dx, y+dy, ch)
+mapDrawAscii :: Int -> Int -> Node -> Map -> [String]
+mapDrawAscii w h cur graph =
+    let shiftCoords dx dy = map $ \(x, y, ch) -> (x+dx, y+dy, ch)
         filterBounds = filter $ \(x, y, ch) -> x >= 0 && y >= 0 && x < w && y < h
         sorter (x, y, _) (x', y', _) = if y == y' then compare x x' else compare y y'
         grouper a b = sorter a b == EQ
@@ -372,10 +342,10 @@ mapDrawAscii w h over m =
                     then construct (x+1) y (cur ++ " ") next
                     else construct (x+1) y (cur ++ [ch]) l
 
-dfsDraw :: Node -> MapGraph -> [(Int, Int, Char)]
+dfsDraw :: Node -> Map -> [(Int, Int, Char)]
 dfsDraw n g = (fst $ dfsDraw' 20 n (0, 0) g) ++ [(0, 0, 'X')]
 
-dfsDraw' :: Int -> Node -> (Int, Int) -> MapGraph -> ([(Int, Int, Char)], MapGraph)
+dfsDraw' :: Int -> Node -> (Int, Int) -> Map -> ([(Int, Int, Char)], Map)
 dfsDraw' 0 _ _ g = ([], g)
 dfsDraw' _ _ _ g | isEmpty g = ([], g)
 dfsDraw' limit n (x, y) g =
@@ -386,12 +356,13 @@ dfsDraw' limit n (x, y) g =
         (Nothing, g') -> ([], g')
   where
     recurse :: Int -> Int -> Int
-            -> (ExitData, Node) -> ([(Int, Int, Char)], MapGraph) -> ([(Int, Int, Char)], MapGraph)
+            -> (ExitData, Node) -> ([(Int, Int, Char)], Map) -> ([(Int, Int, Char)], Map)
     recurse limit x y (d, n) (list, g) =
         case getDelta (exitKey d) of
             Nothing -> (list, g)
-            Just (dx, dy, ch) ->
-                let shortstroke = [(x+dx, y+dy, ch)]
+            Just (dx, dy, ch') ->
+                let ch = if exitProvisional d then ':' else ch'
+                    shortstroke = [(x+dx, y+dy, ch)]
                     stroke = [(x+dx, y+dy, ch), (x+dx*2, y+dy*2, ch)]
                     (newlist, newg) = dfsDraw' (limit - 1) n (x+dx*3, y+dy*3) g
                 in if lookupUserValue "split" (exitUserData d) == UserValueBool True

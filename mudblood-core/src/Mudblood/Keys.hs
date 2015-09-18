@@ -10,6 +10,8 @@ data Key = KAscii Char
          | KEnter
          | KBS
          | KEsc
+         | KHome
+         | KEnd
          | KTab
          | KFun Int
          | KPgUp | KPgDn
@@ -26,6 +28,8 @@ instance Show Key where
     show KEnter = "<RET>"
     show KBS = "<BS>"
     show KEsc = "<ESC>"
+    show KHome = "<Home>"
+    show KEnd = "<End>"
     show KTab = "<TAB>"
     show (KFun x) = "<F" ++ show x ++ ">"
     show KPgUp = "<PgUp>"
@@ -38,7 +42,7 @@ instance Show Key where
 
 -----------------------------------------------------------------------------
 
-keyNames = 
+keyNames =
     [ ("RET", KEnter)
     , ("BS", KBS)
     , ("ESC", KEsc)
@@ -55,6 +59,8 @@ keyNames =
     , ("F10", KFun 10)
     , ("F11", KFun 11)
     , ("F12", KFun 12)
+    , ("Home", KHome)
+    , ("End", KEnd)
     , ("PgUp", KPgUp)
     , ("PgDn", KPgDn)
     , ("Up", KUp)

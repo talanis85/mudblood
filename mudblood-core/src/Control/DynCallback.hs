@@ -26,17 +26,3 @@ dynCallback f = DynCallback $ toDyn f
 -- | Unwrap a 'DynCallback' or return 'Nothing' if the result type does not match.
 runDynCallback :: (Typeable a, Typeable b) => DynCallback a -> Maybe (a -> b)
 runDynCallback (DynCallback cb) = fromDynamic cb
-
-{-
-instance Typeable1 Identity where
-    typeOf1 _ = mkTyConApp (mkTyCon3 "Control" "Monad" "Identity") []
--}
-
-instance (Typeable1 m, Monad m, Typeable s) => Typeable1 (StateT s m) where
-    typeOf1 _ = mkTyConApp (mkTyCon3 "Control" "Monad" "StateT") [typeOf (undefined :: s), typeOf1 (undefined :: m ())]
-
-instance (Typeable1 m, Monad m, Typeable s) => Typeable1 (ErrorT s m) where
-    typeOf1 _ = mkTyConApp (mkTyCon3 "Control" "Monad" "ErrorT") [typeOf (undefined :: s), typeOf1 (undefined :: m ())]
-
-instance (Typeable1 m, Monad m, Typeable s) => Typeable1 (WriterT s m) where
-    typeOf1 _ = mkTyConApp (mkTyCon3 "Control" "Monad" "WriterT") [typeOf (undefined :: s), typeOf1 (undefined :: m ())]

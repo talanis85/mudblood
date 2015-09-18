@@ -1,24 +1,39 @@
 module Control.Trigger
-    ( Trigger, runTrigger
-    , MonadTrigger (..)
-    , done, feed, keep
-    , trig, trig'
-    , EndoTrigger, FailingTrigger, FailingEndoTrigger
-    , Transformer
-    , Handler, EndoHandler, FailingHandler, FailingEndoHandler
-    , Void
-    , failing
-    , collate, filterLeft, filterRight
-    , (>--->), (>--?>), (>?-->), (>?-?>)
-    , (>===>), (>==?>), (>?==>), (>?=?>), (>===*>), (>==?*>), (>?==*>), (>?=?*>)
-    , combine
-    , Fallible
-    , flop, try, try', tryWith
+  ( module Control.Trigger.Core
+  , module Control.Trigger.Iteration
+  , module Control.Trigger.Parser
+  , module Control.Trigger.Lift
 
-    , mapYield, mapYieldMaybe, mapAwait, mapAwaitMaybe
+  , stack
+  , guardFirstOf
+  , manyTill
+  , yieldWhileJust
+  ) where
 
-    , module Control.Trigger.Prelude
-    ) where
+import Control.Trigger.Core
+import Control.Trigger.Iteration
+import Control.Trigger.Parser
+import Control.Trigger.Lift
 
-import Control.Trigger.Monad
-import Control.Trigger.Prelude
+stack :: (Monad m) => (a -> m b) -> a -> m (a, b)
+stack f x = f x >>= \y -> return (x, y)
+
+guardFirstOf :: (MonadPlus m) => [a -> m b] -> a -> m b
+guardFirstOf m x = msum (map ($ x) m)
+
+manyTill :: (Monad m, Alternative m) => m r1 -> m r2 -> m [r1]
+manyTill p1 p2 = do
+    r <- (p2 >> return Nothing) <|> fmap Just p1
+    case r of
+        Just x -> do
+            rest <- manyTill p1 p2
+            return (x : rest)
+        Nothing -> return []
+
+yieldWhileJust :: (Triggering a b m) => m (Maybe b) -> m ()
+yieldWhileJust t = do
+  r <- t
+  case r of
+    Nothing -> return ()
+    Just r' -> yield r' >> yieldWhileJust t
+
