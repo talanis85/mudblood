@@ -25,8 +25,6 @@ import Control.Monad.Morph
 
 import Control.Applicative
 
-import Control.Trigger.Forking
-
 -----------------------------------------------------------------------------
 
 data TF a b x =
@@ -39,21 +37,21 @@ instance Functor (TF a b) where
   fmap f (TAwait g)   = TAwait (f . g)
   fmap f (TFeed a x)  = TFeed a (f x)
 
-newtype T a b m r = T { unT :: Forking (FreeT (TF a b) m) r }
+newtype T a b m r = T { unT :: FreeT (TF a b) m r }
   deriving (Functor, Applicative, Monad, MonadFree (TF a b))
 
 -----------------------------------------------------------------------------
 
-runT = runFreeT . runForking . unT
+runT = runFreeT . unT
 
 instance (MonadIO m) => MonadIO (T a b m) where
   liftIO = lift . liftIO
 
 instance MonadTrans (T a b) where
-  lift x = T $ lift $ lift x
+  lift x = T $ lift x
 
 instance MFunctor (T a b) where
-  hoist f t = T $ hoist (hoist f) (unT t)
+  hoist f t = T $ hoist f (unT t)
 
 instance (Functor f) => MFunctor (FreeT f) where
   hoist = hoistFreeT
@@ -64,14 +62,12 @@ execTrigger = execTrigger' []
     execTrigger' rs t v = do
       r' <- runT t
       case r' of
-          Pure (Right ()) -> return (rs, Nothing)
-          Pure (Left (m, c)) -> execTrigger' rs (T m >--> T c) v
-          -- Pure (Left (m, c)) -> execTrigger' rs (T c >--> T m) v
+          Pure () -> return (rs, Nothing)
           Free (TAwait f) -> case v of
-              []     -> return (rs, Just $ T $ Forking $ wrap (TAwait f))
-              (x:xs) -> execTrigger' rs (T (Forking (f x))) xs
-          Free (TYield x f) -> execTrigger' (rs ++ [x]) (T (Forking f)) v
-          Free (TFeed x f) -> execTrigger' rs (T (Forking f)) (x:v)
+              []     -> return (rs, Just $ T $ wrap (TAwait f))
+              (x:xs) -> execTrigger' rs (T (f x)) xs
+          Free (TYield x f) -> execTrigger' (rs ++ [x]) (T f) v
+          Free (TFeed x f) -> execTrigger' rs (T f) (x:v)
 
 type Trigger a = T a a
 
@@ -91,7 +87,6 @@ class (Monad t) => Triggering a b t | t -> a b where
     yield :: b -> t ()
     await :: t a
     feedback :: a -> t ()
-    fork :: t () -> t ()
 
 -----------------------------------------------------------------------------
 
@@ -99,66 +94,60 @@ instance (Monad m) => Triggering a b (T a b m) where
     yield x = liftF $ TYield x ()
     await = liftF $ TAwait id
     feedback x = liftF $ TFeed x ()
-    fork f = T $ fork_ (unT f)
 
 -----------------------------------------------------------------------------
 
-(>->) :: (Monad m) => T a a m () -> T a a m () -> T a a m ()
+(>->) :: (Monad m) => T a a m r -> T a a m r -> T a a m r
 a >-> b = T $ combine (unT a) (unT b)
   where
-    combine a b = Forking $ FreeT $ do
-      rb <- runFreeT $ runForking b
-      let rrb = Forking $ FreeT $ return rb
+    combine a b = FreeT $ do
+      rb <- runFreeT b
+      let rrb = FreeT $ return rb
       runFreeT $ case rb of
-        Pure (Right ()) -> return $ Right ()
-        Pure (Left (m, c)) -> runForking $ unT $ T a >-> (T m >--> T c)
-        Free (TYield x f) -> wrap $ TYield x (runForking $ a `combine` (Forking f))
-        Free (TFeed x f)  -> wrap $ TFeed x (runForking $ a `combine` (Forking f))
+        Pure r            -> return r
+        Free (TYield x f) -> wrap $ TYield x (a `combine` f)
+        Free (TFeed x f)  -> wrap $ TFeed x (a `combine` f)
         Free (TAwait f)   -> FreeT $ do
-          ra <- runFreeT $ runForking a
+          ra <- runFreeT a
           runFreeT $ case ra of
-            Pure (Right ()) -> return $ Right ()
-            Pure (Left (m, c)) -> runForking $ unT $ (T m >--> T c) >-> T rrb
-            Free (TYield x g) -> runForking $ Forking g `combine` Forking (f x)
-            Free (TFeed x g)  -> wrap $ TFeed x (runForking $ Forking g `combine` rrb)
-            Free (TAwait g) -> wrap $ TAwait $ \x -> runForking $ Forking (g x) `combine` rrb
+            Pure r            -> return r
+            Free (TYield x g) -> g `combine` f x
+            Free (TFeed x g)  -> wrap $ TFeed x (g `combine` rrb)
+            Free (TAwait g)   -> wrap $ TAwait $ \x -> g x `combine` rrb
 
-(>-->) :: (Monad m) => T a a m () -> T a a m () -> T a a m ()
+(>-->) :: (Monad m) => T a a m r -> T a a m r -> T a a m r
 a >--> b = T $ combine (unT a) (unT b)
   where
-    combine a b = Forking $ FreeT $ do
-      rb <- runFreeT $ runForking b
-      let rrb = Forking $ FreeT $ return rb
+    combine a b = FreeT $ do
+      rb <- runFreeT b
+      let rrb = FreeT $ return rb
       runFreeT $ case rb of
-        Pure (Right ()) -> runForking a
-        Pure (Left (m, c)) -> runForking $ a `combine` (m `combine` c)
-        Free (TYield x f) -> wrap $ TYield x (runForking $ a `combine` (Forking f))
-        Free (TFeed x f)  -> wrap $ TFeed x (runForking $ a `combine` (Forking f))
+        Pure r            -> a
+        Free (TYield x f) -> wrap $ TYield x (a `combine` f)
+        Free (TFeed x f)  -> wrap $ TFeed x (a `combine` f)
         Free (TAwait f)   -> FreeT $ do
-          ra <- runFreeT $ runForking a
+          ra <- runFreeT a
           runFreeT $ case ra of
-            Pure (Right ()) -> wrap $ TAwait f
-            Pure (Left (m, c)) -> runForking $ (m `combine` c) `combine` rrb
-            Free (TYield x g) -> runForking $ Forking g `combine` Forking (f x)
-            Free (TFeed x g)  -> wrap $ TFeed x (runForking $ Forking g `combine` rrb)
-            Free (TAwait g) -> wrap $ TAwait $ \x -> runForking $ Forking (g x) `combine` rrb
+            Pure r            -> wrap $ TAwait f
+            Free (TYield x g) -> g `combine` f x
+            Free (TFeed x g)  -> wrap $ TFeed x (g `combine` rrb)
+            Free (TAwait g)   -> wrap $ TAwait $ \x -> g x `combine` rrb
 
-chain :: (Monad m) => [T a a m ()] -> T a a m ()
+chain :: (Monad m) => [T a a m r] -> T a a m r
 chain = mconcat
 
-instance (Monad m) => Monoid (T a a m ()) where
+instance (Monad m) => Monoid (T a a m r) where
   mempty = forever $ await >>= yield
   mappend = (>-->)
 
-distribute :: (MonadTrans t, MFunctor t, Monad m, Monad (t m), Monad (t (T a a m))) => T a a (t m) () -> t (T a a m) ()
+distribute :: (MonadTrans t, MFunctor t, Monad m, Monad (t m), Monad (t (T a a m))) => T a a (t m) r -> t (T a a m) r
 distribute t = do
   r' <- hoist lift $ runT t
   case r' of
-      Pure (Right ()) -> return ()
-      Pure (Left (m, c)) -> distribute (T m >--> T c)
-      Free (TAwait f) -> lift await >>= \x -> distribute (T (Forking (f x)))
-      Free (TYield x f) -> lift (yield x) >> distribute (T (Forking f))
-      Free (TFeed x f) -> lift (feedback x) >> distribute (T (Forking f))
+      Pure r            -> return r
+      Free (TAwait f)   -> lift await >>= \x -> distribute (T (f x))
+      Free (TYield x f) -> lift (yield x) >> distribute (T f)
+      Free (TFeed x f)  -> lift (feedback x) >> distribute (T f)
 
 {- Might have the following properties:
 

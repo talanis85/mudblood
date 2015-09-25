@@ -34,7 +34,6 @@ instance (Monad m) => Triggering a a (Iteration a m) where
     yield x = Iteration $ lift $ yield x
     await = Iteration $ lift await
     feedback x = Iteration $ lift $ feedback x
-    fork x = Iteration $ lift $ fork $ oneshot x
 
 permanent :: (Monad m) => Iteration a m r -> T a a m r'
 permanent p = let x = oneshot p >> x in x

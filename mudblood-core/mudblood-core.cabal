@@ -47,7 +47,6 @@ library
                      , Text.Parsec.Word8
 
                      , Control.Trigger.Core
-                     , Control.Trigger.Forking
                      , Control.Trigger.Iteration
                      , Control.Trigger.Parser
                      , Control.Trigger.Lift
