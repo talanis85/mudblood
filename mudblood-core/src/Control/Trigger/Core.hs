@@ -6,10 +6,11 @@ module Control.Trigger.Core
     , module Control.Monad.Trans
 
     , T, Trigger, execTrigger, streamTrigger, execTriggerS
-    , (>->)
-    , (>-->), chain
+    , tightChain, looseChain
+    , chain
     , distribute
     , Triggering (..)
+    , Chaining (..)
     ) where
 
 -----------------------------------------------------------------------------
@@ -88,6 +89,10 @@ class (Monad t) => Triggering a b t | t -> a b where
     await :: t a
     feedback :: a -> t ()
 
+class (Monad t) => Chaining t where
+    (>->) :: t r -> t r -> t r
+    (>-->) :: t r -> t r -> t r
+
 -----------------------------------------------------------------------------
 
 instance (Monad m) => Triggering a b (T a b m) where
@@ -95,10 +100,14 @@ instance (Monad m) => Triggering a b (T a b m) where
     await = liftF $ TAwait id
     feedback x = liftF $ TFeed x ()
 
+instance (Monad m) => Chaining (T a a m) where
+    (>->) = tightChain
+    (>-->) = looseChain
+
 -----------------------------------------------------------------------------
 
-(>->) :: (Monad m) => T a a m r -> T a a m r -> T a a m r
-a >-> b = T $ combine (unT a) (unT b)
+tightChain :: (Monad m) => T a a m r -> T a a m r -> T a a m r
+a `tightChain` b = T $ combine (unT a) (unT b)
   where
     combine a b = FreeT $ do
       rb <- runFreeT b
@@ -115,8 +124,8 @@ a >-> b = T $ combine (unT a) (unT b)
             Free (TFeed x g)  -> wrap $ TFeed x (g `combine` rrb)
             Free (TAwait g)   -> wrap $ TAwait $ \x -> g x `combine` rrb
 
-(>-->) :: (Monad m) => T a a m r -> T a a m r -> T a a m r
-a >--> b = T $ combine (unT a) (unT b)
+looseChain :: (Monad m) => T a a m r -> T a a m r -> T a a m r
+a `looseChain` b = T $ combine (unT a) (unT b)
   where
     combine a b = FreeT $ do
       rb <- runFreeT b

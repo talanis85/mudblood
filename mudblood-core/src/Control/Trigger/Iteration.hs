@@ -35,6 +35,10 @@ instance (Monad m) => Triggering a a (Iteration a m) where
     await = Iteration $ lift await
     feedback x = Iteration $ lift $ feedback x
 
+instance (Monad m) => Chaining (Iteration a m) where
+    a >-> b = liftIteration $ oneshot a >-> oneshot b
+    a >--> b = liftIteration $ oneshot a >--> oneshot b
+
 permanent :: (Monad m) => Iteration a m r -> T a a m r'
 permanent p = let x = oneshot p >> x in x
 
