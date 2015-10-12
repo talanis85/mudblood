@@ -154,7 +154,7 @@ distribute t = do
   r' <- hoist lift $ runT t
   case r' of
       Pure r            -> return r
-      Free (TAwait f)   -> lift await >>= \x -> distribute (T (f x))
+      Free (TAwait f)   -> lift await >>= distribute . T . f
       Free (TYield x f) -> lift (yield x) >> distribute (T f)
       Free (TFeed x f)  -> lift (feedback x) >> distribute (T f)
 
