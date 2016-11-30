@@ -5,7 +5,7 @@ import Control.Trigger
 import Control.Monad.Identity
 import Control.Monad.Trans.Identity
 import Control.Monad.Reader
-import Control.Monad.State
+import Control.Monad.State.Strict
 
 import qualified Test.HUnit as HU
 import Test.QuickCheck
@@ -131,6 +131,23 @@ tests =
       \p -> permanent (parse (empty <|> aParser_ p)) =!= permanent (parse (aParser_ p))
     , testProperty "<|> assoc" $
       \p1 p2 p3 -> permanent (parse ((aParser_ p1 <|> aParser_ p2) <|> aParser_ p3)) =!= permanent (parse (aParser_ p1 <|> (aParser_ p2 <|> aParser_ p3)))
+    ]
+  , testGroup "Control.Trigger.Parser (stateful)"
+    -- TODO: Need to think about a more general property to test this.
+    [ testProperty "stateful 1" $
+        let sumWhileAbove :: (Monad m) => Int -> Int -> Parser Int (StateT [Int] m) Int
+            sumWhileAbove n m = do
+              start <- fetch
+              if start <= n
+                 then mzero
+                 else do
+                   xs <- many $ do
+                     x <- fetch
+                     if x >= m
+                        then return x
+                        else mzero
+                   return (start + sum xs)
+        in resultOfI (stateful [] $ permanent $ parseS (sumWhileAbove 3 5) >>= yield) [2,3,6,6,2,6,4,5,1] === [2,3,12,2,6,9,1]
     ]
   ]
 

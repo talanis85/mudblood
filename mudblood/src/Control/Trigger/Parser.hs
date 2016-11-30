@@ -1,20 +1,14 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE UndecidableInstances #-}
 
 module Control.Trigger.Parser
   ( P, Parser
-  , fetch, fetchS
-  , feedbackP
+  , fetch
   , liftP
-  , parseLA
   , parse, parse'
-  , (<?>), (<?+>)
-  , cases, cases', (-->), (==>)
+  , parseS, parseS'
   , yieldP
   ) where
 
@@ -63,7 +57,10 @@ instance (Monad m) => MonadPlus (P t m) where
         (la', ru') <- getLA
         putLA la (ru' ++ la')
         b
-      Just r -> return r
+      Just r -> do
+        (la', ru') <- getLA
+        putLA (la ++ la') ru'
+        return r
 
 instance (Monad m) => Alternative (P t m) where
   empty = mzero
@@ -71,16 +68,6 @@ instance (Monad m) => Alternative (P t m) where
 
 fetch :: (Monad m) => P t m t
 fetch = P $ liftF $ PFetch id
-
-fetchS :: (MonadState [t] m) => P t m t
-fetchS = do
-  s <- lift get
-  case s of
-    [] -> fetch
-    (x:xs) -> do
-      lift $ put xs
-      pushLA x
-      return x
 
 try :: (Monad m) => P a m r -> P a m (Maybe r)
 try p = P $ try' (unP p)
@@ -90,23 +77,7 @@ try p = P $ try' (unP p)
       case r of
         Pure r -> return (Just r)
         Free PFail -> return Nothing
-        Free (PFetch f) -> FreeT (return $ Free (PFetch (\x -> try' $ f x)))
-
-pushLA :: (Monad m) => a -> P a m ()
-pushLA x = P $ lift $ modify $ \(la, ru) -> (la, ru ++ [x])
-
-flushLA :: (Monad m) => P a m [a]
-flushLA = do
-  (la, ru) <- P $ lift get
-  P $ lift $ put (la, [])
-  return ru
-
-feedbackP :: (MonadState [t] m) => P t m ()
-feedbackP = do
-  (la, ru) <- P $ lift get
-  P $ lift $ put (la, [])
-  lift $ modify (++ ru)
-  return ()
+        Free (PFetch f) -> FreeT (return $ Free (PFetch (try' . f)))
 
 parseLA :: (Monad m) => P a m r -> Iteration a m (r, [a])
 parseLA p =
@@ -122,28 +93,35 @@ parseLA p =
                                (y:ys) -> parse_ True (la' ++ [y]) ys (f y)
   in parse__
 
+-- | Use an underlying MonadState to preserve input values. This way, a failing input value
+--   will not be yielded at the end but will instead be reused in the next iteration
+--   of the parser.
+parseLAS :: (MonadState [a] m) => P a m r -> Iteration a m (r, [a])
+parseLAS p =
+  let parse__ = parse_ False [] [] (unP p)
+      parse_ consumed la ru p' = do
+        (r, (la', ru')) <- runStateT (runFreeT p') (la, ru)
+        case r of
+          Pure r     -> lift (modify (++ ru')) >> return (r, la')
+          Free PFail -> if consumed then mapM_ yield la' >> mapM_ yield ru' >> parse__
+                                    else fail "Parser failed without consuming anything"
+          Free (PFetch f) -> case ru' of
+                               [] -> do
+                                 st <- lift get
+                                 case st of
+                                   [] -> await >>= \x -> parse_ True (la' ++ [x]) ru' (f x)
+                                   (y:ys) -> lift (put ys) >> parse_ True (la' ++ [y]) [] (f y)
+                               (y:ys) -> parse_ True (la' ++ [y]) ys (f y)
+  in parse__
+
 parse :: (Monad m) => P a m r -> Iteration a m r
 parse p = parseLA p >>= \(r, la) -> return r
 
 parse' :: (Monad m) => P a m r -> Iteration a m r
 parse' p = parseLA p >>= \(r, la) -> mapM_ pushback la >> return r
 
-(<?>) :: (Monad m) => (r -> a) -> P a m r -> T a a m ()
-f <?> p = f <&> parse p
+parseS :: (MonadState [a] m) => P a m r -> Iteration a m r
+parseS p = parseLAS p >>= \(r, la) -> return r
 
-(<?+>) :: (Monad m) => (r -> a) -> P a m r -> T a a m ()
-f <?+> p = f <&> parse' p
-
-cases :: (Monad m) => P a m (Iteration a m r) -> Iteration a m r
-cases p = join $ parse p
-
-cases' :: (Monad m) => P a m (Iteration a m r) -> Iteration a m r
-cases' p = join $ parse' p
-
-infixl 4 ==>
-(==>) :: (Monad m, Monad n) => m r -> (r -> n r') -> m (n r')
-a ==> b = a >>= return . b
-
-infixl 4 -->
-(-->) :: (Monad m, Monad n) => m r -> (n r') -> m (n r')
-a --> b = a >> return b
+parseS' :: (MonadState [a] m) => P a m r -> Iteration a m r
+parseS' p = parseLAS p >>= \(r, la) -> mapM_ pushback la >> return r
