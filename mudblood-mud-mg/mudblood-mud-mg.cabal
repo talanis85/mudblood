@@ -31,7 +31,6 @@ library
                      , Mudblood.Contrib.MG.Guilds.Werwoelfe
                      -- , Mudblood.Contrib.MG.Team
                      , Mudblood.Contrib.MG.Navi
-                     , Mudblood.Contrib.MG.Inventory
                      , Data.Cache
                      , Data.Undo
                      , System.Lock.SimpleLock
