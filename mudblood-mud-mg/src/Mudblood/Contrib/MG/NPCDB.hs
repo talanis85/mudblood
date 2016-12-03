@@ -16,6 +16,11 @@ module Mudblood.Contrib.MG.NPCDB
     , plakette
 
     , component
+    -- * Commands
+    , npclistCmd
+    , npcdoneCmd
+    , npcaddCmd
+    , npcaddhereCmd
     ) where
 
 import Control.Lens
@@ -70,40 +75,52 @@ showNPCList l =
     forM_ l $ \npc -> echo $ setFg Green $ toAS $
         printf "- %s - %s - %s" (npcName npc) (npcArea npc) (if npcDone npc then "DONE" else "TODO")
 
+npclistCmd = mkCommand "npclist" "Zeigt alle NPCs im angegebenen Gebiet." $
+  f <$> arg stringParser "gebiet" "Gebiet"
+    where
+      f area = do
+        npcdb <- getNPCDB'
+        char  <- use $ rec . Char.name
+        npcs  <- npcForArea npcdb char area
+        showNPCList npcs
+
+npcdoneCmd = mkCommand "npcdone" "Markiert den angegebenen NPC als erledigt." $
+  f <$> arg stringParser "gebiet" "Gebiet"
+    <*> arg stringParser "npc" "NPC"
+    where
+      f area name = do
+        npcdb <- getNPCDB'
+        char  <- use $ rec . Char.name
+        done npcdb char name area
+        echo $ toAS $ printf "Marked '%s' (%s) as DONE" name area
+
+npcaddCmd = mkCommand "npcadd" "Erstellt einen neuen NPC." $
+  f <$> arg stringParser "gebiet" "Gebiet"
+    <*> arg stringParser "npc" "NPC"
+    where
+      f area name = do
+        npcdb <- getNPCDB'
+        char  <- use $ rec . Char.name
+        addNPC npcdb name area Nothing
+        echo $ toAS $ printf "Added '%s' (%s)" name area
+
+npcaddhereCmd = mkCommand "npcaddhere" "Erstellt einen neuen NPC im aktuellen Raum." $
+  f <$> arg stringParser "gebiet" "Gebiet"
+    <*> arg stringParser "npc" "NPC"
+    where
+      f area name = do
+        npcdb <- getNPCDB'
+        char  <- use $ rec . Char.name
+        room  <- use $ rec . Mapper.currentRoom
+        addNPC npcdb name area (Just room)
+        echo $ toAS $ printf "Added '%s' (%s) for room #%d" name area room
+
 commands = mconcat
-    [ commandC "npclist" "<gebiet>" "Zeigt alle NPCs im angegebenen Gebiet." $ do
-        area <- getStringArg 0
-        lift $ do
-            npcdb <- getNPCDB'
-            char  <- use $ rec . Char.name
-            npcs  <- npcForArea npcdb char area
-            showNPCList npcs
-    , commandC "npcdone" "<gebiet> <npc>" "Markiert den angegebenen NPC als erledigt." $ do
-        area <- getStringArg 0
-        name <- getStringArg 1
-        lift $ do
-            npcdb <- getNPCDB'
-            char  <- use $ rec . Char.name
-            done npcdb char name area
-            echo $ toAS $ printf "Marked '%s' (%s) as DONE" name area
-    , commandC "npcadd" "<gebiet> <npc>" "Erstellt einen neuen NPC." $ do
-        area <- getStringArg 0
-        name <- getStringArg 1
-        lift $ do
-            npcdb <- getNPCDB'
-            char  <- use $ rec . Char.name
-            addNPC npcdb name area Nothing
-            echo $ toAS $ printf "Added '%s' (%s)" name area
-    , commandC "npcaddhere" "<gebiet> <npc>" "Erstellt einen neuen NPC im aktuellen Raum." $ do
-        area <- getStringArg 0
-        name <- getStringArg 1
-        lift $ do
-            npcdb <- getNPCDB'
-            char  <- use $ rec . Char.name
-            room  <- use $ rec . Mapper.currentRoom
-            addNPC npcdb name area (Just room)
-            echo $ toAS $ printf "Added '%s' (%s) for room #%d" name area room
-    ]
+  [ commandC npclistCmd
+  , commandC npcdoneCmd
+  , commandC npcaddCmd
+  , commandC npcaddhereCmd
+  ]
 
 --------------------------------------------------------------------------------------------------
 

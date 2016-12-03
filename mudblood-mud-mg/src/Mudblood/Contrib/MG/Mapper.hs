@@ -30,6 +30,20 @@ module Mudblood.Contrib.MG.Mapper
     , roomTrigger
     -- * Widgets
     -- , mapperWidgets
+    -- * Commands
+    , walkmodeCmd
+    , tagCmd
+    , roominfoCmd
+    , newroomCmd
+    , addexitCmd
+    , rmexitCmd
+    , rmroomCmd
+    , clearhashCmd
+    , splitCmd
+    , weightCmd
+    , addblockerCmd
+    , saferoomCmd
+    , unsaferoomCmd
     ) where
 
 import Data.Carte
@@ -126,103 +140,137 @@ component portals = stateC mkSt
         >>> statusC (("mapper: " ++) <$> show <$> use (rec . mode))
         >>> commands
 
-commands = mconcat $
-    [ commandC "walkmode" "<safe|fast|aggro>" "Setzt den Speedwalkmodus." $ do
-        mode <- getStringArg 0
-        lift $ case mode of
-            "safe"  -> rec . walkMode .= WalkSafe
-            "fast"  -> rec . walkMode .= WalkFast
-            "aggro" -> rec . walkMode .= WalkAggro
-            _       -> throwError (stackTrace "mapper" "Unknown walk mode")
-    , commandC "tag" "<tag>" "Weist dem aktuellen Raum einen Kurznamen zu." $ do
-        newtag <- getStringArg 0
-        lift $ rec . currentRoomData . userValue "tag" .= UserValueString newtag
-    , commandC "roominfo" "" "Zeigt eine Uebersicht des aktuellen Raums an." $ lift $ do
+walkmodeCmd = mkCommand "walkmode" "Setzt den Speedwalkmodus" $
+  f <$> arg stringParser "modus" "'safe', 'fast' oder 'aggro'"
+    where
+      f mode = case mode of
+        "safe"  -> rec . walkMode .= WalkSafe
+        "fast"  -> rec . walkMode .= WalkFast
+        "aggro" -> rec . walkMode .= WalkAggro
+        _       -> throwError (stackTrace "mapper" "Unknown walk mode")
+
+tagCmd = mkCommand "tag" "Weist dem aktuellen Raum einen Kurznamen zu" $
+  f <$> arg stringParser "tag" "Kurzname"
+    where
+      f newtag = rec . currentRoomData . userValue "tag" .= UserValueString newtag
+
+roominfoCmd = mkCommand "roominfo" "Zeigt eine Uebersicht des aktuellen Raums an" $
+  pure f
+    where
+      f = do
         cur <- use $ rec . currentRoom
         m   <- use $ rec . mapStore . baseMap
-
         let exits = mapGetExits cur m
             hash = lookupUserValue "hash" $ m ^. mapRoomData cur
-
         echo $ toAS $ "Id:   " ++ show cur
         echo $ toAS $ "Hash: " ++ show hash
-
         echo $ toAS $ "Exits:"
-
         let formatExit (n, d) = printf " -- %10s - %5d - %s - %s" (exitKey d) n (exitLayer d) (if exitProvisional d then "P" else "")
-
         mapM_ (echo . toAS . formatExit) exits
-    , commandC "newroom" "" "Erstellt einen neuen, isolierten Raum." $ lift $ do
+
+newroomCmd = mkCommand "newroom" "Erstellt einen neuen, isolierten Raum" $
+  pure f
+    where
+      f = do
         m <- use $ rec . mapStore . baseMap
         (m', r) <- hoistMaybe (stackTrace "mapper" "Could not create room") $ mapAddRoom m
         rec . mapStore . baseMap .= m'
         rec . currentRoom .= r
-    , commandC "addexit" "<para> <ausgang> [<zielraum>]" "Erstellt einen neuen Ausgang im aktuellen Raum. <para> gibt die Parallelwelt an (0 fuer normal). Ist <zielraum> nicht angegeben, wird ein neuer Raum als Zielraum erstellt." $ do
-        para <- getIntArg 0
-        exit <- getStringArg 1
-        room <- getStringOption 2
 
-        lift $ do
-            cur   <- use $ rec . currentRoom
-            m     <- use $ rec . mapStore . baseMap
-            layer <- parseParaLayer para
+addexitCmd = mkCommand "addexit" "Erstellt einen neuen Ausgang im aktuellen Raum" $
+  f <$> arg intParser "para" "Parallelweltnummer (0 fuer normal)"
+    <*> arg stringParser "ausgang" "Name des Ausgangs"
+    <*> arg stringParser "zielraum" "Zielraum. Bei '#' wird ein neuer Zielraum erstellt"
+    where
+      f para exit room = do
+        cur   <- use $ rec . currentRoom
+        m     <- use $ rec . mapStore . baseMap
+        layer <- parseParaLayer para
 
-            case room of
-                Nothing -> do
-                    (m', r) <- hoistMaybe (stackTrace "mapper" "Could not create room") $ mapAddRoom m
-                    rec . mapStore . baseMap .= mapAddExit cur exit r layer m'
-                Just room -> do
-                    roomId <- findRoom room >>= hoistMaybe (stackTrace "mapper" "Could not find target room")
-                    rec . mapStore . baseMap %= mapAddExit cur exit roomId layer
-    , commandC "rmexit" "<para> <ausgang>" "Loescht den angegeben Ausgang. <para> gibt die Parallelwelt an (0 fuer normal)." $ do
-        para <- getIntArg 0
-        exit <- getStringArg 1
+        case room of
+          "#" -> do
+            (m', r) <- hoistMaybe (stackTrace "mapper" "Could not create room") $ mapAddRoom m
+            rec . mapStore . baseMap .= mapAddExit cur exit r layer m'
+          room -> do
+            roomId <- findRoom room >>= hoistMaybe (stackTrace "mapper" "Could not find target room")
+            rec . mapStore . baseMap %= mapAddExit cur exit roomId layer
 
-        lift $ do
-            cur   <- use $ rec . currentRoom
-            layer <- parseParaLayer para
-            rec . mapStore . baseMap %= mapDeleteExit cur exit layer
-    , commandC "rmroom" "<raum>" "Loescht den angegebenen Raum. <raum> kann folgende Formen haben: 'tag', '#raumnummer' oder '$hash'." $ do
-        room <- getStringArg 0
+rmexitCmd = mkCommand "rmexit" "Loescht den angegebenen Ausgang" $
+  f <$> arg intParser "para" "Parallelweltnummer (0 fuer normal)"
+    <*> arg stringParser "ausgang" "Name des Ausgangs"
+    where
+      f para exit = do
+        cur   <- use $ rec . currentRoom
+        layer <- parseParaLayer para
+        rec . mapStore . baseMap %= mapDeleteExit cur exit layer
 
-        lift $ do
-            roomId <- findRoom room >>= hoistMaybe (stackTrace "mapper" "Could not find room")
-            rec . mapStore . baseMap %= mapDeleteRoom roomId
-    , commandC "clearhash" "" "Loescht den Hash des aktuellen Raums." $ lift $ do
+rmroomCmd = mkCommand "rmroom" "Loescht den angegebenen Raum" $
+  f <$> arg stringParser "raum" "tag, #raumnummer oder $hash"
+    where
+      f room = do
+        roomId <- findRoom room >>= hoistMaybe (stackTrace "mapper" "Could not find room")
+        rec . mapStore . baseMap %= mapDeleteRoom roomId
+
+clearhashCmd = mkCommand "clearhash" "Loescht den Hash des aktuellen Raums" $
+  pure f
+    where
+      f = do
         cur <- use $ rec . currentRoom
         rec . currentRoomData %= M.delete "hash"
-    , commandC "split" "<ausgang>" "Schaltet das split-flag fuer den angegebenen Ausgang ein oder aus. Mit aktiviertem split wird die Karte nur bis zu diesem Ausgang dargestellt." $ do
-        exit <- getStringArg 0
 
-        lift $ do
-            cur <- use $ rec . currentRoom
-            rec . mapStore . baseMap . mapExitData cur exit Nothing . userValue "split" %= userValueToggle
-    , commandC "weight" "<ausgang> <gewicht>" "Setzt das Kantengewicht des angegebenen Ausgangs (fuer die Wegsuche)." $ do
-        exit <- getStringArg 0
-        weight <- getIntArg 1
+splitCmd = mkCommand "split" "Aktiviert oder deaktiviert das split-Flag fuer den angegebenen Ausgang" $
+  f <$> arg stringParser "ausgang" "Zu teilender Ausgang"
+    where
+      f exit = do
+        cur <- use $ rec . currentRoom
+        rec . mapStore . baseMap . mapExitData cur exit Nothing . userValue "split" %= userValueToggle
 
+weightCmd = mkCommand "weight" "Setzt das Kantengewicht des angegebenen Ausgangs" $
+  f <$> arg stringParser "ausgang" "Gewuenschter Ausgang"
+    <*> arg intParser "gewicht" "Gewuenschtes Gewicht"
+    where
+      f exit weight = do
         when (weight < 1) $ throwError $ stackTrace "mapper" "Das Gewicht muss groesser als 0 sein."
+        cur <- use $ rec . currentRoom
+        rec . mapStore . baseMap . mapExitData cur exit Nothing . userValue "weight" .= userValueFromInt weight
 
-        lift $ do
-            cur <- use $ rec . currentRoom
-            rec . mapStore . baseMap . mapExitData cur exit Nothing . userValue "weight" .= userValueFromInt weight
-    , commandC "addblocker" "<ausgang> <name>" "Fuegt einen Blocker namens <name> in Richtung <ausgang> hinzu." $ do
-        exit <- getStringArg 0
-        name <- getStringArg 1
+addblockerCmd = mkCommand "addblocker" "Fuegt einen Blocker zu einem Ausgang hinzu" $
+  f <$> arg stringParser "ausgang" "Ausgang"
+    <*> arg stringParser "npc" "Name des Blockers"
+    where 
+      f exit name = do
+        cur <- use (rec . currentRoom)
+        rec . mapStore . baseMap . mapExitData cur exit Nothing . userValue "blockers" . stringAsStringArray %= (++ [name])
 
-        lift $ do
-            cur <- use (rec . currentRoom)
-            rec . mapStore . baseMap . mapExitData cur exit Nothing . userValue "blockers" . stringAsStringArray %= (++ [name])
-    , commandC "saferoom" "" "Markiert den aktuellen Raum als sicher." $ do
-        lift $ do
-            cur <- use (rec . currentRoom)
-            rec . mapStore . baseMap . mapRoomData cur . userFlag "safe" .= True
-    , commandC "unsaferoom" "" "Markiert den aktuellen Raum als nicht sicher." $ do
-        lift $ do
-            cur <- use (rec . currentRoom)
-            rec . mapStore . baseMap . mapRoomData cur . userFlag "safe" .= False
+saferoomCmd = mkCommand "saferoom" "Markiert den aktuellen Raum als sicher" $
+  pure f
+    where
+      f = do
+        cur <- use (rec . currentRoom)
+        rec . mapStore . baseMap . mapRoomData cur . userFlag "safe" .= True
+
+unsaferoomCmd = mkCommand "unsaferoom" "Markiert den aktuellen Raum als nicht sicher" $
+  pure f
+    where
+      f = do
+        cur <- use (rec . currentRoom)
+        rec . mapStore . baseMap . mapRoomData cur . userFlag "safe" .= False
+
+commands = mconcat $
+    [ commandC walkmodeCmd
+    , commandC tagCmd
+    , commandC roominfoCmd
+    , commandC newroomCmd
+    , commandC addexitCmd
+    , commandC rmexitCmd
+    , commandC rmroomCmd
+    , commandC clearhashCmd
+    , commandC splitCmd
+    , commandC weightCmd
+    , commandC addblockerCmd
+    , commandC saferoomCmd
+    , commandC unsaferoomCmd
     ]
-
 
 parseParaLayer para
     | para < 0 || para > 7 = throwError (stackTrace "mapper" "Invalid para number")
@@ -361,7 +409,7 @@ aggroStepper n = do
   where
     blocker = do
       name <- parse' fetchBlocker
-      yieldFeedback $ mkEv $ CommandEvent ("autofight", [StringArg name])
+      yieldFeedback $ mkEv $ CommandEvent ("autofight", [name])
       return WalkerPause
     blockerTot = do
         parse' Combat.fetchDeath

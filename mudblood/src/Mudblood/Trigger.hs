@@ -24,7 +24,9 @@ module Mudblood.Trigger
 
 import Control.Trigger
 import Control.Monad
+import Control.Monad.Error
 import Control.Monad.Trans.Maybe
+import Control.Monad.State
 import Control.Command
 
 import Data.Dynamic
@@ -100,7 +102,7 @@ fetchConnect = fetch >>= guardConnect
 fetchGMCPModule :: (Monad m, GMCPEvent :<: a) => String -> Parser (Ev a) m GMCP
 fetchGMCPModule mod = fetchGMCP >>= \x -> if gmcpModule x == mod then return x else mzero
 
-fetchCommand :: (Monad m, CommandEvent :<: a) => Parser (Ev a) m (String, [Arg])
+fetchCommand :: (Monad m, CommandEvent :<: a) => Parser (Ev a) m (String, [String])
 fetchCommand = fetch >>= guardCommand
 
 fetchEOR :: (Monad m, TelnetEvent :<: a) => Parser (Ev a) m ()
@@ -143,7 +145,7 @@ guardGMCPModule m ev = guardGMCP ev >>= \x -> guard (gmcpModule x == m) >> retur
 guardInfo :: (MonadPlus m, InfoEvent :<: a) => Ev a -> m String
 guardInfo = guardFix unInfoEvent
 
-guardCommand :: (MonadPlus m, CommandEvent :<: a) => Ev a -> m (String, [Arg])
+guardCommand :: (MonadPlus m, CommandEvent :<: a) => Ev a -> m (String, [String])
 guardCommand = guardFix unCommandEvent
 
 guardEOR :: (MonadPlus m, TelnetEvent :<: a) => Ev a -> m ()
@@ -170,13 +172,16 @@ joinBlockMultiline = mconcat . intersperse (toAS "\n")
 
 -----------------------------------------------------------------------------
 
-commandTrigger :: (Monad m, CommandEvent :<: a) => String -> CommandM (Iteration (Ev a) m) r -> Iteration (Ev a) m r
-commandTrigger name cmd = do
+commandTrigger :: (MonadError e m, Error e, CommandEvent :<: a) => Command (Iteration (Ev a) m) r -> Iteration (Ev a) m r
+commandTrigger cmd = do
     args <- parse' $ do
         (name', args) <- fetchCommand
-        guard (name' == name)
+        guard (name' == cmdName cmd)
         return args
-    runCommandM cmd args
+    let result = runStateT (execCommandParser (const popArgumentFromState) (cmdParser cmd)) args
+    case result of
+      Left err -> lift $ throwError $ strMsg err
+      Right (cmd'', _) -> cmd''
 
 -----------------------------------------------------------------------------
 

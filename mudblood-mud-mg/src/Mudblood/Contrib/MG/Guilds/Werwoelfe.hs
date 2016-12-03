@@ -173,11 +173,9 @@ skillLevels =
 
 ------------------------------------------------------------------------------
 
-autofightTrigger = permanent $ commandTrigger "autofight" $ do
-    npc <- getStringOption 0
-    case npc of
-      Just npc -> lift $ void $ autofight 2 npc
-      Nothing  -> return ()
+autofightTrigger = permanent $ commandTrigger $ mkCommand "autofight" "autofight" $
+  f <$> arg stringParser "npc" "npc"
+  where f npc = void $ autofight 1 npc
 
 autofight :: (MBEvent a, Screen s) => Int -> String -> Iteration (Ev a) (MB u s) Bool
 autofight 1 npc = do

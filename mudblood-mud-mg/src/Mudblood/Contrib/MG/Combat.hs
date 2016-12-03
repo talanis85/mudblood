@@ -11,6 +11,9 @@ module Mudblood.Contrib.MG.Combat
   , fetchFitness
   , fetchEscape
   , fetchDeath
+  -- * Commands
+  , schildCmd
+  , autofightCmd
   ) where
 
 import Mudblood
@@ -54,22 +57,23 @@ component = describe "Mudblood.MG.Combat" $ component'
              >>> triggerC 10 smartEscape
              -- >>> triggerC 5 extendedEscape
              >>> triggerCombatC defaultCombatTrigger
-             >>> cmdSchild
-             >>> cmdAutofight
+             >>> commandC schildCmd
+             >>> commandC autofightCmd
 
 menu = describe "Combat" $ mconcat
     [ bindArg (KAscii 'f') "Focus" $ \f -> rec . stFocus .= (if f == "" then Nothing else Just f)
     , bindArg (KAscii 's') "Schild" $ assign (rec . stShieldName)
     ]
 
-cmdSchild = commandC "schild" "<schildname>" "Setzt die ID des zu benutzenden Schildes." $ do
-    name <- getStringArg 0
-    lift $ rec . stShieldName .= name
-    lift $ echo $ toAS $ "Schild gesetzt: " ++ name
+schildCmd = mkCommand "schild" "Setzt die ID des zu benutzenden Schildes." $
+            f <$> arg stringParser "schildname" "ID des Schildes"
+  where f name = do
+          rec . stShieldName .= name
+          echo $ toAS $ "Schild gesetzt: " ++ name
 
-cmdAutofight = commandC "autofight" "<npc>" "Autokampf gegen <npc>" $ do
-    npc <- getStringArg 0
-    lift $ raise $ mkEv $ CommandEvent ("autofight", [StringArg npc])
+autofightCmd = mkCommand "autofight" "Autokampf gegen einen NPC" $
+               f <$> arg stringParser "npc" "ID des Gegners"
+  where f npc = raise $ mkEv $ CommandEvent ("autofight", [npc])
 
 smartEscape = permanent $ do
     parse' $ fetchLineRegex "^Die Angst ist staerker als Du \\.\\.\\. Du willst nur noch weg hier\\.$"

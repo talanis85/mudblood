@@ -148,18 +148,22 @@ triggerWithDefault handler ev = trigger ev >>= mapM_ handler
 
 command :: (MBEvent e, Screen m, Error err, MonadError err m) => String -> MBR s e u m [Ev e]
 command s = do
-    (cmd, args) <- parseCommand s
+    let tokens = tokenize s
     cmds <- gets mbrCommands
-    case cmd of
-        "commands" -> do
+    case tokens of
+        Just ["commands"] -> do
             let showCmd (name, c) = do
-                  lift $ outputS $ OutputLine $ setStyle StyleBold $ toAS (getCommandDoc c)
+                  lift $ outputS $ OutputLine $ setStyle StyleBold $ toAS (name ++ ": " ++ cmdDescription c)
                   lift $ outputS $ OutputLine $ toAS ""
             mapM_ showCmd (M.toList cmds)
             return []
-        _ -> case M.lookup cmd cmds of
+        Just (cmd:args) -> case M.lookup cmd cmds of
             Nothing -> throwError $ strMsg "Unknown command"
-            Just cmd' -> fmap snd $ mbx (runCommand cmd' args)
+            Just cmd' -> do
+              (cmd'', _) <- runStateT (execCommandParser (const popArgumentFromState) (cmdParser cmd')) args
+              fmap snd (mbx cmd'')
+        Just [] -> throwError $ strMsg $ "Empty command"
+        Nothing -> throwError $ strMsg $ "Invalid command"
 
 command' :: (MBEvent e, Screen m, Error err, MonadError err m) => (Ev e -> MBR s e u m ()) -> String -> MBR s e u m ()
 command' handler s = do

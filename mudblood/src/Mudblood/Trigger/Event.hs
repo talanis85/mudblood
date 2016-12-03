@@ -6,7 +6,6 @@ import Data.Carte
 import Data.GMCP
 import Mudblood.Text
 import Mudblood.Telnet (TelnetNeg)
-import Control.Command
 
 type Ev = Fix
 
@@ -23,7 +22,7 @@ newtype TelnetEvent e   = TelnetEvent     { unTelnetEvent   :: TelnetNeg  } deri
 newtype GMCPEvent e     = GMCPEvent       { unGMCPEvent     :: GMCP       } deriving Functor
 newtype NetworkEvent e  = NetworkEvent    { unNetworkEvent  :: NetworkEventType } deriving Functor
 newtype TimeEvent e     = TimeEvent       { unTimeEvent     :: Int        } deriving Functor
-newtype CommandEvent e  = CommandEvent    { unCommandEvent  :: (String, [Arg])  } deriving Functor
+newtype CommandEvent e  = CommandEvent    { unCommandEvent  :: (String, [String])  } deriving Functor
 newtype FeedbackEvent e = FeedbackEvent   { unFeedbackEvent :: e          } deriving Functor
 data BellEvent e     = BellEvent                                         deriving Functor
 data NilEvent e      = NilEvent                                          deriving Functor

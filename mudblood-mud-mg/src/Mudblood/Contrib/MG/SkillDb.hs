@@ -7,6 +7,9 @@ module Mudblood.Contrib.MG.SkillDb
     , skillC
 
     , skillToPercent
+
+    -- * Commands
+    , querySkillsCmd
     ) where
 
 import Mudblood
@@ -47,7 +50,10 @@ component :: (Assets :@: r, MonadIO m) => MBComponent m e (Fix r) (Fix (R :*: r)
 component = stateC mkSt
         >>> bootC loadSkillDb
 
-skillC querySkills = commandC "skills" "" "Fragt Deine Gildenfaehigkeiten ab." $ lift $ dispatch $ oneshot $ skillTrigger querySkills
+querySkillsCmd querySkills = mkCommand "skills" "Fragt Deine Gildenfaehigkeiten ab" (pure f)
+  where f = dispatch $ oneshot $ skillTrigger querySkills
+
+skillC querySkills = commandC (querySkillsCmd querySkills)
 
 --------------------------------------------------------------------------------------------------
 

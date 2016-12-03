@@ -300,11 +300,9 @@ hayai = do
           parse' $ fetchLineRegex "^Der Zeitfluss veraendert sich"
           return ()
 
-autofightTrigger = permanent $ commandTrigger "autofight" $ do
-    npc <- getStringOption 0
-    case npc of
-      Just npc -> lift $ void $ autofight npc
-      Nothing  -> return ()
+autofightTrigger = permanent $ commandTrigger $ mkCommand "autofight" "autofight" $
+  f <$> arg stringParser "npc" "npc"
+  where f npc = void $ autofight npc
 
 autofight :: (R :@: r, Screen s, MGEvent e) => String -> Iteration (Ev e) (MB (Fix r) s) Bool
 autofight npc = do

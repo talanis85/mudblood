@@ -1,20 +1,24 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE ExistentialQuantification #-}
 module Control.Command
-  ( Command, CommandM
-  , Arg (..)
-  , parseCommand
-  , runCommand, getCommandDoc
-  , runCommandM
+  ( Command
+  , CommandParser
   , mkCommand
-  , mapCommand
-  , getStringArg, getStringOption
-  , getIntArg, getIntOption
+  , CommandInfo (..)
+  , Arg
+  , arg
+  , execCommandParser
+  , popArgumentFromState
+  , intParser
+  , stringParser
+  , tokenize
   ) where
 
 import Control.Applicative hiding (many)
 import Control.Monad
-import Control.Monad.Error
+import Control.Monad.Except
 import Control.Monad.Reader
+import Control.Monad.State
 import Control.Monad.Trans
 import Control.Monad.Morph
 
@@ -22,79 +26,106 @@ import Text.Parsec
 import qualified Text.Parsec.Language as L
 import qualified Text.Parsec.Token as T
 
-data Command m r = Command
-    { commandAction :: CommandM m r
-    , commandDoc :: String
+type Command m r = CommandInfo (m r)
+
+data Arg a = Arg
+  { argParser :: ArgParser a
+  , argInfo :: ArgInfo
+  }
+  deriving (Functor)
+
+data ArgParser a = ArgParser
+  { argpParser :: String -> Maybe a
+  , argpType :: String
+  }
+  deriving (Functor)
+
+data ArgInfo = ArgInfo
+  { argName :: String
+  , argDescription :: String
+  }
+
+arg :: ArgParser a -> String -> String -> CommandParser a
+arg p n d = ArgP Arg
+  { argParser = p
+  , argInfo = ArgInfo
+    { argName = n
+    , argDescription = d
     }
+  }
 
-newtype CommandM m r = CommandM { getCommandM :: ReaderT [Arg] m r }
-  deriving (Functor, Applicative, Monad, MonadTrans, MonadError e, MFunctor)
+data CommandInfo a = CommandInfo
+  { cmdParser :: CommandParser a
+  , cmdDescription :: String
+  , cmdName :: String
+  }
+  deriving (Functor)
 
-data Arg = IntArg Int | StringArg String | IdentifierArg String
+mkCommand :: String -> String -> CommandParser a -> CommandInfo a
+mkCommand name desc p = CommandInfo
+  { cmdName = name
+  , cmdParser = p
+  , cmdDescription = desc
+  }
 
-getIntArg = argAt coerceInt
-getIntOption = optionAt coerceInt
+data CommandParser a
+  = NilP a
+  | ArgP (Arg a)
+  | forall x . MultP (CommandParser (x -> a)) (CommandParser x)
 
-coerceInt (IntArg x) = return x
-coerceInt _ = throwError $ strMsg "Expected integer"
+instance Functor CommandParser where
+  fmap f (NilP x) = NilP (f x)
+  fmap f (ArgP arg) = ArgP (fmap f arg)
+  fmap f (MultP p1 p2) = MultP (fmap (f.) p1) p2
 
-getStringArg = argAt coerceString
-getStringOption = optionAt coerceString
+instance Applicative CommandParser where
+  pure = NilP
+  (<*>) = MultP
 
-coerceString (StringArg x) = return x
-coerceString (IdentifierArg x) = return x
-coerceString (IntArg x) = return $ show x
+popArgumentFromState :: (MonadState [a] m) => m (Maybe a)
+popArgumentFromState = do
+  args <- get
+  case args of
+    [] -> return Nothing
+    (x:xs) -> put xs >> return (Just x)
 
-argAt :: (Error e, MonadError e m) => (Arg -> CommandM m a) -> Int -> CommandM m a
-argAt f n = do
-    r <- optionAt f n
-    case r of
-        Nothing -> lift $ throwError $ strMsg "Not enough arguments"
-        Just r  -> return r
+execCommandParser :: (MonadError e m, Error e)
+                  => (ArgInfo -> m (Maybe String)) -> CommandParser a -> m a
+execCommandParser getter p = case p of
+  NilP x -> return x
+  ArgP arg -> do
+    value <- getter (argInfo arg)
+    case value of
+      Nothing -> throwError $ strMsg $ "Missing arguments. Expecting " ++ argName (argInfo arg) ++ " :: " ++ argpType (argParser arg)
+      Just x -> case argpParser (argParser arg) x of
+        Just x' -> return x'
+        Nothing -> throwError $ strMsg $ "Parse error. Expecting " ++ argName (argInfo arg) ++ " :: " ++ argpType (argParser arg)
+  MultP f p' -> do
+    f' <- execCommandParser getter f
+    x <- execCommandParser getter p'
+    return (f' x)
 
-optionAt :: (Monad m) => (Arg -> CommandM m a) -> Int -> CommandM m (Maybe a)
-optionAt f n = do
-    args <- CommandM $ ask
-    if length args > n
-        then liftM Just (f (args !! n))
-        else return Nothing
-
-parseCommand :: (Error e, MonadError e m) => String -> m (String, [Arg])
-parseCommand s = case parse p_cmd "" s of
-                   Left err -> throwError $ strMsg $ show err
-                   Right v -> return v
-
-runCommandM :: CommandM m r -> [Arg] -> m r
-runCommandM cmd args = runReaderT (getCommandM cmd) args
-
-runCommand :: Command m r -> [Arg] -> m r
-runCommand cmd args = runCommandM (commandAction cmd) args
-
-mapCommand :: (CommandM m r -> CommandM m' r') -> Command m r -> Command m' r'
-mapCommand f cmd = cmd { commandAction = f (commandAction cmd) }
-
-getCommandDoc :: Command m r -> String
-getCommandDoc = commandDoc
-
-mkCommand :: String -> CommandM m r -> Command m r
-mkCommand doc cmd = Command
-    { commandAction = cmd
-    , commandDoc = doc
-    }
+parseOrNothing p s = case parse p "" s of
+                       Left err -> Nothing
+                       Right v -> Just v
 
 tok = T.makeTokenParser L.haskellDef
-
-identifier = T.identifier tok
-stringLiteral = T.stringLiteral tok
 integer = T.integer tok
 
-p_cmd = do
-    cmd <- identifier
-    args <- many p_arg
-    return (cmd, args)
+intParser = ArgParser
+  { argpParser = parseOrNothing (fromIntegral <$> integer)
+  , argpType = "int"
+  }
+stringParser = ArgParser
+  { argpParser = Just
+  , argpType = "string"
+  }
 
-p_arg = choice [ p_stringArg, p_intArg, p_identifierArg ]
+tokenize :: String -> Maybe [String]
+tokenize s = case parse (many tokenP <* eof) "" s of
+               Left err -> error (show err) >> Nothing
+               Right v -> Just v
 
-p_stringArg = StringArg <$> stringLiteral
-p_intArg = IntArg . fromIntegral <$> integer
-p_identifierArg = IdentifierArg <$> identifier
+tokenP = choice [try quotedP, try unquotedP]
+quotedP = spaces >> char '"' *> many (noneOf "\"") <* char '"'
+unquotedP = spaces >> many1 (noneOf " ")

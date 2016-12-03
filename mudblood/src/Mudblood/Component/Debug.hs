@@ -5,9 +5,13 @@ module Mudblood.Component.Debug
 import Mudblood
 import Mudblood.Trigger.Regex
 
-regexTestC = commandC "testRegex" "<regex> <string>" "Tests if <regex> matches in <string>." $ do
-    re <- getStringArg 0
-    text <- getStringArg 1
-    if re ~= text
-        then lift (echo $ toAS "matches")
-        else lift (echo $ toAS "does not match")
+regexTestC = commandC regexTestCmd
+
+regexTestCmd = mkCommand "testRegex" "Tests if <regex> matches in <string>."
+                 (f <$> arg stringParser "regex" "Regex to test"
+                    <*> arg stringParser "string" "String to test against")
+  where
+    f re text =
+      if re ~= text
+         then lift (echo $ toAS "matches")
+         else lift (echo $ toAS "does not match")

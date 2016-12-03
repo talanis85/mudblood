@@ -69,7 +69,7 @@ instance (Monad m) => StateEffect (MBComponentEffect m e) where
         , ceffBindings = fmap (fmap (fmap (zoomMBX l))) $ ceffBindings h
         , ceffBoot = zoomMBX l $ ceffBoot h
         , ceffShutdown = zoomMBX l $ ceffShutdown h
-        , ceffCommands = fmap (mapCommand (hoist (zoomMBX l))) $ ceffCommands h
+        , ceffCommands = fmap (fmap (zoomMBX l)) $ ceffCommands h
         , ceffStatus = zoomMB l $ ceffStatus h
         }
     seCat a b = MBComponentEffect
@@ -156,10 +156,8 @@ bootC a = pureComponent $ seEmpty { ceffBoot = a }
 shutdownC :: (Monad m) => MBX e u m () -> MBComponent m e u u
 shutdownC a = pureComponent $ seEmpty { ceffShutdown = a }
 
-commandC :: (Monad m) => String -> String -> String -> CommandM (MBX e u m) () -> MBComponent m e u u
-commandC name usage description cmd =
-    let cmd' = mkCommand (name ++ " " ++ usage ++ "\n" ++ description) cmd
-    in pureComponent $ seEmpty { ceffCommands = M.singleton name cmd' }
+commandC :: (Monad m) => Command (MBX e u m) () -> MBComponent m e u u
+commandC cmd = pureComponent $ seEmpty { ceffCommands = M.singleton (cmdName cmd) cmd }
 
 statusC :: (Monad m) => MB u m String -> MBComponent m e u u
 statusC s = pureComponent $ seEmpty { ceffStatus = s }
