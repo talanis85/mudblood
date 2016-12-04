@@ -141,7 +141,7 @@ component portals = stateC mkSt
         >>> commands
 
 walkmodeCmd = mkCommand "walkmode" "Setzt den Speedwalkmodus" $
-  f <$> arg stringParser "modus" "'safe', 'fast' oder 'aggro'"
+  f <$> arg (enumParser ["safe", "fast", "aggro"]) "modus" "'safe', 'fast' oder 'aggro'"
     where
       f mode = case mode of
         "safe"  -> rec . walkMode .= WalkSafe
