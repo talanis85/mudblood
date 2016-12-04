@@ -11,6 +11,7 @@ module Control.Command
   , popArgumentFromState
   , intParser
   , stringParser
+  , enumParser
   , tokenize
   ) where
 
@@ -21,6 +22,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans
 import Control.Monad.Morph
+import Data.List
 
 import Text.Parsec
 import qualified Text.Parsec.Language as L
@@ -119,6 +121,10 @@ intParser = ArgParser
 stringParser = ArgParser
   { argpParser = Just
   , argpType = "string"
+  }
+enumParser enum = ArgParser
+  { argpParser = \x -> if x `elem` enum then Just x else Nothing
+  , argpType = intercalate "|" enum
   }
 
 tokenize :: String -> Maybe [String]
