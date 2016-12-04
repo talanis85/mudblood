@@ -200,6 +200,9 @@ run widget component = do
     st <- initScreen
     void $ evalVtyScreen (runWithComponent component widget runner) st
 
+showError :: (Show a) => a -> VtyScreen ()
+showError = appendLine 0 . toAS . ("ERROR: " ++) . show
+
 runner :: (MBEvent e) => VMBR e u ()
 runner = do
     chan <- lift $ use scrEventChan
@@ -233,8 +236,7 @@ runner = do
             Nothing -> return ()
             Just ev -> handleEvent ev >> handleAllEvents chan
 
-    handleEvent ev = catchError (handleEvent' ev)
-                                (lift . appendLine 0 . toAS . ("ERROR: " ++) . show)
+    handleEvent ev = handleEvent' ev `catchError` (lift . showError)
     handleEvent' ev = do
         case ev of
             SReceiveEvent chars  -> do
@@ -306,7 +308,7 @@ connectToHost host port = do
     newSocket <- liftIO $ telnetConnect host port $ telnetRecvHandler $ telnetProc chan
     case newSocket of
         Right newSocket -> scrSocket .= Just newSocket
-        Left err        -> appendLine 0 $ toAS $ "ERROR: " ++ err
+        Left err        -> showError err
   where
     telnetProc chan ev = case ev of
         TelnetRawEvent s -> liftIO $ telnetReceiveProc chan $ SReceiveEvent s
@@ -390,7 +392,7 @@ handleKey k m = do
 
                         case bufferContent buffer of
                             ('/':cmd) -> do
-                                command' defaultHandler cmd
+                                command' defaultHandler cmd `catchError` (lift . showError)
                             _ -> do
                               triggerWithDefault defaultHandler $ mkEv $ SendEvent $ bufferContent buffer
 
