@@ -28,7 +28,7 @@ data LoggedEvent =
 
 instance S.Serialize LoggedEvent
 
-eventLog :: (MonadIO m, LineEvent :<: a, SendEvent :<: a, TelnetEvent :<: a, GMCPEvent :<: a) => FilePath -> Trigger (Ev a) m ()
+eventLog :: (MonadIO m, MonadFail m, LineEvent :<: a, SendEvent :<: a, TelnetEvent :<: a, GMCPEvent :<: a) => FilePath -> Trigger (Ev a) m ()
 eventLog path = do
   f <- lift $ liftIO $ openFile path AppendMode
   permanent $ do

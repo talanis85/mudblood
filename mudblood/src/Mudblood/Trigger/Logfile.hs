@@ -9,7 +9,7 @@ import Control.Monad
 
 import Mudblood
 
-logfileTrigger :: (MonadIO m, LineEvent :<: a, SendEvent :<: a) => String -> Trigger (Ev a) m ()
+logfileTrigger :: (MonadIO m, MonadFail m, LineEvent :<: a, SendEvent :<: a) => String -> Trigger (Ev a) m ()
 logfileTrigger filename = do
     fileHandle <- lift $ liftIO $ openFile filename AppendMode
     permanent $ parse' fetchLoggedEvent >>= logIt fileHandle

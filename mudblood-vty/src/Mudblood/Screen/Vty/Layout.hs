@@ -31,11 +31,13 @@ data Layout =
   | LayoutFocus Bool Layout
   deriving (Eq)
 
+instance Semigroup Layout where
+  (<>) LayoutEmpty x = x
+  (<>) x LayoutEmpty = x
+  (<>) a b = LayoutV a b
+
 instance Monoid Layout where
   mempty = LayoutEmpty
-  mappend LayoutEmpty x = x
-  mappend x LayoutEmpty = x
-  mappend a b = LayoutV a b
 
 drawLayout :: Int -> Layout -> V.Image
 drawLayout width layout = case layout of

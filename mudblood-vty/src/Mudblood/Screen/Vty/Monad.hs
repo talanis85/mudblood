@@ -7,7 +7,7 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.State
-import Control.Monad.Error
+import Control.Monad.Except
 import Control.Concurrent.STM
 import Control.UnsafeCallback
 
@@ -38,11 +38,11 @@ import System.Process
 
 -----------------------------------------------------------------------------
 
-newtype VtyScreen a = VtyScreen (ErrorT StackTrace (StateT VtyScreenState IO) a)
-    deriving (Functor, Monad, Applicative, MonadIO, MonadState VtyScreenState, MonadError StackTrace)
+newtype VtyScreen a = VtyScreen (ExceptT StackTrace (StateT VtyScreenState IO) a)
+    deriving (Functor, Monad, Applicative, MonadIO, MonadFail, MonadState VtyScreenState, MonadError StackTrace)
 
 evalVtyScreen :: VtyScreen a -> VtyScreenState -> IO (Either StackTrace a)
-evalVtyScreen (VtyScreen s) state = evalStateT (runErrorT s) state
+evalVtyScreen (VtyScreen s) state = evalStateT (runExceptT s) state
 
 -----------------------------------------------------------------------------
 

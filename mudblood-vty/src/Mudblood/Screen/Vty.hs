@@ -30,6 +30,7 @@ import           Data.Dynamic
 import           Data.Maybe
 import qualified Data.Map as M
 import           Data.Foldable (toList)
+import           Data.Function (fix)
 import qualified Data.ListZipper as LZ
 import           Data.Buffer
 import           Data.Time.Clock
@@ -48,7 +49,7 @@ import           Control.Applicative
 import           Control.Lens
 import           Control.Monad.State
 import           Control.Monad.Trans
-import           Control.Monad.Error
+import           Control.Monad.Except
 import           Control.Exception (try)
 import           Control.Concurrent
 import           Control.Concurrent.STM
@@ -59,6 +60,7 @@ import           System.Process
 import           System.Exit
 
 import qualified Graphics.Vty as V
+import           Graphics.Vty.Platform.Unix (mkVty)
 import           Graphics.Vty.Widget
 
 import           Mudblood.Monad
@@ -164,8 +166,7 @@ timerLoop chan = forever $ do
 
 initScreen :: IO VtyScreenState
 initScreen = do
-    cfg <- V.standardIOConfig
-    v <- V.mkVty cfg
+    v <- mkVty V.defaultConfig
     chan <- newTChanIO
     forkIO $ inputLoop v chan
     forkIO $ timerLoop chan
@@ -458,7 +459,7 @@ handleKey k m = do
 getScreenSize :: VtyScreen (Int, Int)
 getScreenSize = do
     vty <- use scrVty
-    displayRegion <- V.displayBounds (V.outputIface vty)
+    displayRegion <- liftIO $ V.displayBounds (V.outputIface vty)
     return ((fromIntegral $ fst displayRegion), (fromIntegral $ snd displayRegion))
 
 
@@ -565,7 +566,7 @@ drawScreen = do
         infoW      = 10
 
     vty           <- use scrVty
-    displayRegion <- V.displayBounds (V.outputIface vty)
+    displayRegion <- liftIO $ V.displayBounds (V.outputIface vty)
     let (w, h)    = ((fromIntegral $ fst displayRegion), (fromIntegral $ snd displayRegion))
 
     pic <- draw [ bottomleft $ padded 2 0 0 2 wCompletion

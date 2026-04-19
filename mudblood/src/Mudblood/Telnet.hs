@@ -25,6 +25,7 @@ import Data.Word
 import Data.GMCP
 
 import Control.Exception
+import Control.Monad
 import Control.Monad.Writer
 import Control.Monad.State
 import Control.Concurrent
@@ -201,7 +202,7 @@ data TelnetSocketState = TelnetSocketState {
 }
 
 newtype TelnetIO a = TelnetIO (StateT TelnetSocketState IO a)
-    deriving (Monad, MonadIO)
+    deriving (Functor, Applicative, Monad, MonadIO)
 
 data TelnetEvent = TelnetRawEvent [Word8]
                  | TelnetNegEvent TelnetNeg
@@ -291,7 +292,7 @@ telnetSend :: TelnetSocket -> Communication -> IO ()
 telnetSend sock (Communication dat) = send sock (BL.pack (toBinary dat)) >> return ()
 
 telnetClose :: TelnetSocket -> IO ()
-telnetClose sock = sClose sock
+telnetClose sock = close sock
 
 telnetSubneg :: TelnetOption -> [Word8] -> TelnetNeg
 telnetSubneg opt dat = TelnetNeg (Just CMD_SB) (Just opt) (dat ++ [255, 240])

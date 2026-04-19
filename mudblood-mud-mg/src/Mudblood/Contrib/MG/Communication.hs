@@ -27,14 +27,14 @@ messagesC color =
     formatMessage (a, b, True,  True ) = wrapAS 78 $ toAS $ printf "<von %s an Freunde> %s" a b
     formatMessage (a, b, False, True ) = wrapAS 78 $ toAS $ printf "<an Freunde> %s" b
 
-fetchInlineChannel :: (MonadState [Ev e] m, LineEvent :<: e)
+fetchInlineChannel :: (MonadState [Ev e] m, MonadFail m, LineEvent :<: e)
                    => Parser (Ev e) m (String, String, String)
 fetchInlineChannel = do
     (chan, name, text1) <- regex3 "^\\[([^]]+):([^]]+)] *(.+|$)" =<< fetchLine
     textRest <- many $ regex1 "^ (.+)$" =<< fetchLine
     return (chan, name, text1 ++ concat textRest)
 
-fetchInlineMessage :: (MonadState [Ev e] m, LineEvent :<: e)
+fetchInlineMessage :: (MonadState [Ev e] m, MonadFail m, LineEvent :<: e)
                    => Parser (Ev e) m (String, String, Bool, Bool)
 fetchInlineMessage = do
     (name, text1, incoming, friend) <- fetchLine >>= \x -> friendIn x <|> friendOut x <|> tmIn x <|> tmOut x

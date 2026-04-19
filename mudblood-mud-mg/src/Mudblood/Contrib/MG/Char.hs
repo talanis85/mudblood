@@ -88,7 +88,7 @@ mkSt = R
 
 makeLenses ''R
 
-component :: (Functor l, Monad m, GMCPEvent :<: e) => MBComponent m e (Fix l) (Fix (R :*: l))
+component :: (Functor l, Monad m, MonadFail m, GMCPEvent :<: e) => MBComponent m e (Fix l) (Fix (R :*: l))
 component = describe "Mudblood.MG.Char" $
         stateC mkSt
     >>> triggerC 10 triggerGMCPStats

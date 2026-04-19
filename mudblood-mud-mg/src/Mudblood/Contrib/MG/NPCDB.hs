@@ -2,6 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Mudblood.Contrib.MG.NPCDB
     ( R, component
@@ -23,6 +24,7 @@ module Mudblood.Contrib.MG.NPCDB
     , npcaddhereCmd
     ) where
 
+import Control.Exception
 import Control.Lens
 import Control.Monad
 import Control.Monad.Trans
@@ -31,7 +33,7 @@ import Data.Maybe
 import Data.Monoid
 import Data.Bifunctor
 
-import qualified Database.SQLite as SQL
+import qualified Database.SQLite.Simple as SQL
 import Text.Printf
 
 import Mudblood hiding (connect)
@@ -41,7 +43,7 @@ import Mudblood.Component.Assets
 
 --------------------------------------------------------------------------------------------------
 
-type Handle = SQL.SQLiteHandle
+type Handle = SQL.Connection
 
 data R a = R
     { _stHandle :: Maybe Handle
@@ -73,7 +75,7 @@ getNPCDB' = do
 
 showNPCList l =
     forM_ l $ \npc -> echo $ setFg Green $ toAS $
-        printf "- %s - %s - %s" (npcName npc) (npcArea npc) (if npcDone npc then "DONE" else "TODO")
+        printf "- %s - %s - %s" (npcName npc) (npcArea npc) (if npcDone npc then "DONE" :: String else "TODO" :: String)
 
 npclistCmd = mkCommand "npclist" "Zeigt alle NPCs im angegebenen Gebiet." $
   f <$> arg stringParser "gebiet" "Gebiet"
@@ -124,14 +126,20 @@ commands = mconcat
 
 --------------------------------------------------------------------------------------------------
 
-catchSQLError msg m = liftIO m >>= hoistEither . first (stackTrace "npcdb")
-catchSQLError' msg m = liftIO m >>= hoistJust . fmap (stackTrace "npcdb")
+hoistJust = maybe (return ()) throwError
+
+catchSQLError :: (MonadIO m, MonadError StackTrace m) => String -> IO a -> m a
+catchSQLError msg m = do
+  r <- liftIO (try m)
+  case r of
+    Left (e :: SomeException) -> throwError (stackTrace "npcdb" "SQL Error")
+    Right x -> return x
 
 loadNPCDB :: (Assets :@: r, R :@: r, MonadIO m) => MBX e (Fix r) m ()
 loadNPCDB = do
     path <- getGameAssetPath "npcdb"
-    h <- liftIO $ SQL.openConnection path
-    liftIO $ SQL.execStatement_ h $ "PRAGMA foreign_keys = ON;"
+    h <- liftIO $ SQL.open path
+    liftIO $ SQL.execute_ h $ "PRAGMA foreign_keys = ON;"
     -- liftIO $ SQL.execStatement_ h schema
     rec . stHandle .= Just h
 
@@ -144,42 +152,43 @@ connect path = do
 
 addArea :: (MonadIO m, MonadError StackTrace m) => Handle -> String -> m ()
 addArea h name = do
-    catchSQLError' "Adding area" $ SQL.execStatement_ h $ "INSERT INTO area (name) VALUES (\"" ++ name ++ "\");"
+    catchSQLError "Adding area" $ SQL.execute h "INSERT INTO area (name) VALUES (?);" (SQL.Only name)
 
 addNPC :: (MonadIO m, MonadError StackTrace m) => Handle -> String -> String -> Maybe Int -> m ()
 addNPC h name area room = do
-    (r :: [[SQL.Row ()]]) <- catchSQLError "Checking if npc already exists" $ SQL.execStatement h $
-        printf "SELECT * FROM npc WHERE name=\"%s\" AND area=\"%s\";" name area
-    case (room, head r) of
+    r <- catchSQLError "Checking if npc already exists" $ SQL.query h
+        "SELECT * FROM npc WHERE name=? AND area=?;" (name, area)
+    case (room, r :: [NPC]) of
         (Nothing, []) -> do
-            catchSQLError' "Insert npc" $ SQL.execStatement_ h $
-                printf "INSERT INTO npc (name, area) VALUES (\"%s\", \"%s\");" name area
+            catchSQLError "Insert npc" $ SQL.execute h
+                "INSERT INTO npc (name, area) VALUES (?,?);" (name, area)
         (Nothing, (_:_)) -> do
             throwError $ stackTrace "npcdb" "NPC already known in that region"
         (Just room', []) -> do
-            catchSQLError' "Insert npc" $ SQL.execStatement_ h $
-                printf "INSERT INTO npc (name, area) VALUES (\"%s\", \"%s\");" name area
-            catchSQLError' "Associating npc with room" $ SQL.execStatement_ h $
-                printf "INSERT INTO npc_room (name, area, roomId) VALUES (\"%s\", \"%s\", %d);" name area room'
+            catchSQLError "Insert npc" $ SQL.execute h
+                "INSERT INTO npc (name, area) VALUES (?,?);" (name, area)
+            catchSQLError "Associating npc with room" $ SQL.execute h
+                "INSERT INTO npc_room (name, area, roomId) VALUES (?,?,?);" (name, area, room')
         (Just room', (_:_)) -> do
-            catchSQLError' "Associating npc with room" $ SQL.execStatement_ h $
-                printf "INSERT INTO npc_room (name, area, roomId) VALUES (\"%s\", \"%s\", %d);" name area room'
+            catchSQLError "Associating npc with room" $ SQL.execute h
+                "INSERT INTO npc_room (name, area, roomId) VALUES (?,?,?);" (name, area, room')
 
 done h char name area = do
-    catchSQLError' "Setting npc as done" $ SQL.execStatement_ h $
-        printf "INSERT INTO npc_done (name, area, player, date) VALUES (\"%s\", \"%s\", \"%s\", datetime('now'));" name area char
+    catchSQLError "Setting npc as done" $ SQL.execute h
+        "INSERT INTO npc_done (name, area, player, date) VALUES (?,?,?,datetime('now'));" (name, area, char)
 
 done' h char name area = do
-    catchSQLError' "Setting npc as done" $ SQL.execStatement_ h $
-        printf "INSERT INTO npc_done (name, area, player) VALUES (\"%s\", \"%s\", \"%s\");" name area char
+    catchSQLError "Setting npc as done" $ SQL.execute h
+        "INSERT INTO npc_done (name, area, player) VALUES (?,?,?);" (name, area, char)
 
 undo h char name area = do
-    catchSQLError' "Setting npc as todo" $ SQL.execStatement_ h $
-        printf "DELETE FROM npc_done WHERE name=\"%s\" AND area=\"%s\" AND player=\"%s\";" name area char
+    catchSQLError "Setting npc as todo" $ SQL.execute h
+        "DELETE FROM npc_done WHERE name=? AND area=? AND player=?;" (name, area, char)
 
+{-
 extractResult r = do
-    name <- lookup "name" r >>= sqliteToString
-    area <- lookup "area" r >>= sqliteToString
+    name <- lookup "name" r
+    area <- lookup "area" r
     rooms <- lookup "rooms" r >>= sqliteToString
     done <- lookup "done" r >>= sqliteToInt
     return $ NPC
@@ -188,6 +197,7 @@ extractResult r = do
       , npcRooms = rooms
       , npcDone = if done == 0 then False else True
       }
+-}
 
 data NPC = NPC
   { npcName :: String
@@ -197,32 +207,38 @@ data NPC = NPC
   }
   deriving (Show)
 
+instance SQL.FromRow NPC where
+  fromRow = NPC <$> SQL.field <*> SQL.field <*> SQL.field <*> SQL.field
+
+npcForRoom :: (MonadError StackTrace m, MonadIO m) => SQL.Connection -> String -> Int -> m [NPC]
 npcForRoom h char room = do
-    r <- catchSQLError "Querying npcs for room" $ SQL.execStatement h $ printf
+    r <- catchSQLError "Querying npcs for room" $ SQL.query h
         "SELECT npc.name as name, \
         \       npc.area as area, \
         \       group_concat(npc_room.roomId) as rooms, \
-        \       count((select player from npc_done where npc_done.name == npc.name and npc_done.area == npc.area and npc_done.player == \"%s\")) as done \
+        \       count((select player from npc_done where npc_done.name == npc.name and npc_done.area == npc.area and npc_done.player == ?)) as done \
         \FROM npc, \
         \     npc_room \
-        \WHERE npc_room.roomId=%d AND \
+        \WHERE npc_room.roomId=? AND \
         \      npc.name = npc_room.name AND npc.area = npc_room.area \
         \GROUP BY npc.name, npc.area;"
-        char room
-    return $ mapMaybe extractResult $ head r
+        (char, room)
+    return r
 
+npcForArea :: (MonadError StackTrace m, MonadIO m) => SQL.Connection -> String -> String -> m [NPC]
 npcForArea h char area = do
-    r <- catchSQLError "Querying npcs for area" $ SQL.execStatement h $ printf
+    r <- catchSQLError "Querying npcs for area" $ SQL.query h
         "SELECT npc.name as name, \
         \       npc.area as area, \
         \       group_concat(npc_room.roomId) as rooms, \
-        \       count((select player from npc_done where npc_done.name == npc.name and npc_done.area == npc.area and npc_done.player == \"%s\")) as done \
+        \       count((select player from npc_done where npc_done.name == npc.name and npc_done.area == npc.area and npc_done.player == ?)) as done \
         \FROM npc, npc_room \
-        \WHERE npc.area = \"%s\" \
+        \WHERE npc.area = ? \
         \GROUP BY npc.name, npc.area;"
-        char area
-    return $ mapMaybe extractResult $ head r
+        (char, area)
+    return r
 
+{-
 sqliteToString :: SQL.Value -> Maybe String
 sqliteToString v = case v of
     SQL.Text s -> Just s
@@ -232,27 +248,25 @@ sqliteToInt :: SQL.Value -> Maybe Int
 sqliteToInt v = case v of
     SQL.Int s -> Just (fromIntegral s)
     _ -> Nothing
+-}
 
 addNPCDiff :: (MonadError StackTrace m, MonadIO m) => Handle -> String -> String -> Int -> Int -> m ()
 addNPCDiff h char name added missing = do
-    catchSQLError' "Adding NPC diff" $ SQL.execStatement_ h $ printf
-        "INSERT INTO npc_diff (player, other, date, added, missing) VALUES (\"%s\", \"%s\", datetime('now'), %d, %d);"
-        char name added missing
+    catchSQLError "Adding NPC diff" $ SQL.execute h
+        "INSERT INTO npc_diff (player, other, date, added, missing) VALUES (?,?,datetime('now'),?,?);"
+        (char, name, added, missing)
     return ()
 
 getLastNPCDiff :: Handle -> String -> String -> IO (Int, Int)
 getLastNPCDiff h char name = do
-    r <- SQL.execStatement h $ printf
-        "SELECT * FROM npc_diff WHERE player=\"%s\" AND other=\"%s\" ORDER BY date DESC;"
-        char name
+    r <- SQL.query h
+        "SELECT * FROM npc_diff WHERE player=? AND other=? ORDER BY date DESC;"
+        (char, name)
     case r of
-        Right [r:_] -> return $ fromMaybe (0, 0) $ do
-                        missing <- lookup "missing" r >>= sqliteToInt
-                        added <- lookup "added" r >>= sqliteToInt
-                        return (added, missing)
-        _ -> return (0, 0)
+        [] -> return (0, 0)
+        (r:_) -> return r
 
-fetchPlakette :: (MBEvent a, Monad m) => Parser (Ev a) m (String, Int, Int)
+fetchPlakette :: (MBEvent a, Monad m, MonadFail m) => Parser (Ev a) m (String, Int, Int)
 fetchPlakette = do
     (count, name) <- fetchLineRegex2 "^Du hast ([[:digit:]]+) Monster getoetet, die ([[:word:]]+) noch nicht getoetet hat"
     count' <- fetchLineRegex1 $ "^" ++ name ++ " hat ([[:digit:]]+) Monster getoetet, die Du noch nicht getoetet hast"

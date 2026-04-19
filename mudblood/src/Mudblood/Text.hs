@@ -155,15 +155,17 @@ instance Eq AttrString where
 instance IsString AttrString where
     fromString = toAS
 
-instance Monoid AttrString where
-    mempty = AttrString []
-    mappend (AttrString []) (AttrString b) = AttrString b
-    mappend (AttrString a) (AttrString []) = AttrString a
-    mappend (AttrString a) (AttrString b) =
+instance Semigroup AttrString where
+    (<>) (AttrString []) (AttrString b) = AttrString b
+    (<>) (AttrString a) (AttrString []) = AttrString a
+    (<>) (AttrString a) (AttrString b) =
         let a' = last a
             b' = head b
         in if snd a' == snd b' then AttrString (init a ++ [(fst a' ++ fst b', snd a')] ++ tail b)
                                else AttrString (a ++ b)
+
+instance Monoid AttrString where
+    mempty = AttrString []
 
 mapAS :: ([(Char, Attr)] -> [(Char, Attr)]) -> AttrString -> AttrString
 mapAS f s = packAS $ f $ unpackAS s

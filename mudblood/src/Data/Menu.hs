@@ -34,12 +34,14 @@ instance Bifunctor Menu where
     bimap f g (Menu (d, Left v))   = Menu (d, Left (g v))
     bimap f g (Menu (d, Right xs)) = Menu (d, Right (map (bimap f (bimap f g)) xs))
 
+instance Semigroup (Menu k v) where
+    a <> b = case (matchMenu a, matchMenu b) of
+               (Left x, Right []) -> Menu (menuTitle a, Left x)
+               (Left x, y)        -> Menu (menuTitle b, y)
+               (Right x, Right y) -> Menu (intercalate ", " (filter (/= "") [menuTitle a, menuTitle b]), Right (x <> y))
+
 instance Monoid (Menu k v) where
     mempty = Menu ("", Right [])
-    mappend a b = case (matchMenu a, matchMenu b) of
-                    (Left x, Right []) -> Menu (menuTitle a, Left x)
-                    (Left x, y)        -> Menu (menuTitle b, y)
-                    (Right x, Right y) -> Menu (intercalate ", " (filter (/= "") [menuTitle a, menuTitle b]), Right (x <> y))
 
 emptyMenu = Menu ("", Right [])
 

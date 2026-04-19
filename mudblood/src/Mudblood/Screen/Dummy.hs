@@ -10,7 +10,7 @@ import Control.Monad
 import Control.Monad.Identity
 
 newtype DummyScreen a = DummyScreen (ExceptT StackTrace IO a)
-  deriving (Monad, Applicative, Functor, MonadIO, MonadError StackTrace)
+  deriving (Monad, Applicative, Functor, MonadFail, MonadIO, MonadError StackTrace)
 
 instance Screen DummyScreen where
   outputS o    = return ()

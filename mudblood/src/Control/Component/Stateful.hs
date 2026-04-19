@@ -62,9 +62,11 @@ class StateEffect eff where
   seCat :: eff a -> eff a -> eff a
 
 -- This is somewhat missing in 'Control.Category'
+instance (Category cat) => Semigroup (cat a a) where
+  (<>) = (>>>)
+
 instance (Category cat) => Monoid (cat a a) where
-    mempty = id
-    mappend = (>>>)
+  mempty = id
 
 instance (StateEffect eff) => Category (StatefulComponent eff) where
   id = StatefulComponent

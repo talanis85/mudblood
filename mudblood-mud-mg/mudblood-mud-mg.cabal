@@ -59,7 +59,7 @@ library
                      , array
                      , parsec
                      , containers
-                     , sqlite
+                     , sqlite-simple
                      , convertible
                      , mmorph
                      , flock

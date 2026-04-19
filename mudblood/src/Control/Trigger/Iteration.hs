@@ -16,7 +16,7 @@ import Control.Monad.Morph
 import Control.Trigger.Core
 
 newtype Iteration' a b m r = Iteration { runIteration :: StateT [a] (T a b m) r }
-  deriving (Functor, Applicative, Monad, MonadIO)
+  deriving (Functor, Applicative, Monad, MonadFail, MonadIO)
 
 type Iteration a = Iteration' a a
 

@@ -278,8 +278,9 @@ mapDeleteRoom n = delNode n
 mapShortestPath :: (Real w) => (ExitData -> w) -> Node -> Node -> Map -> [(String, Node)]
 mapShortestPath weightfun src dest graph =
     case sp src dest (emap weightfun graph) of
-        []            -> []
-        (first:nodes) -> reverse $ snd $ foldl (foldPath graph) (first, []) nodes
+        Nothing            -> []
+        Just []            -> []
+        Just (first:nodes) -> reverse $ snd $ foldl (foldPath graph) (first, []) nodes
   where
     foldPath graph (s, p) d = let (_, _, edge) = head $ filter (goesTo d) $ out graph s
                               in (d, ((exitKey edge), d):p)

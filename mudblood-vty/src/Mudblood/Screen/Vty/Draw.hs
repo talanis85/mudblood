@@ -26,4 +26,4 @@ mapStyle s = case s of
     StyleReverse    -> V.SetTo V.reverseVideo
 
 drawAttrString s = (V.horizCat $ map drawChunk (groupAS $ untabAS 8 s))
-    where drawChunk (c, a) = V.string (V.Attr (mapStyle $ attrStyle a) (mapColor $ attrFg a) (mapColor $ attrBg a)) c
+    where drawChunk (c, a) = V.string (V.Attr (mapStyle $ attrStyle a) (mapColor $ attrFg a) (mapColor $ attrBg a) V.Default) c

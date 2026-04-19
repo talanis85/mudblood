@@ -40,7 +40,7 @@ import Data.Word
 -----------------------------------------------------------------------------
 
 newtype SimpleScreen a = SimpleScreen (ExceptT StackTrace (StateT ScreenState IO) a)
-    deriving (Functor, Monad, MonadIO, MonadState ScreenState, MonadError StackTrace)
+    deriving (Functor, Applicative, Monad, MonadFail, MonadIO, MonadState ScreenState, MonadError StackTrace)
 
 execSimpleScreen :: SimpleScreen a -> ScreenState -> IO ()
 execSimpleScreen (SimpleScreen s) state = void $ runStateT (void $ runExceptT s) state

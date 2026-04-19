@@ -130,7 +130,7 @@ inRoom h = do
 
 ------------------------------------------------------------------------------
 
-component :: (Assets :@: r, Screen m, MonadIO m, MGEvent e) => [Int] -> MBComponent m e (Fix r) (Fix (R :*: r))
+component :: (Assets :@: r, Screen m, MonadIO m, MonadFail m, MGEvent e) => [Int] -> MBComponent m e (Fix r) (Fix (R :*: r))
 component portals = stateC mkSt
         >>> triggerC 100 roomTrigger
         >>> bootC (loadMap portals)
@@ -139,6 +139,9 @@ component portals = stateC mkSt
         >>> statusC (("overlay: " ++) <$> show <$> use (rec . overlay))
         >>> statusC (("mapper: " ++) <$> show <$> use (rec . mode))
         >>> commands
+
+liftMaybe :: (MonadError e m) => e -> Maybe a -> m a
+liftMaybe e = maybe (throwError e) return
 
 walkmodeCmd = mkCommand "walkmode" "Setzt den Speedwalkmodus" $
   f <$> arg (enumParser ["safe", "fast", "aggro"]) "modus" "'safe', 'fast' oder 'aggro'"
@@ -173,7 +176,7 @@ newroomCmd = mkCommand "newroom" "Erstellt einen neuen, isolierten Raum" $
     where
       f = do
         m <- use $ rec . mapStore . baseMap
-        (m', r) <- hoistMaybe (stackTrace "mapper" "Could not create room") $ mapAddRoom m
+        (m', r) <- liftMaybe (stackTrace "mapper" "Could not create room") $ mapAddRoom m
         rec . mapStore . baseMap .= m'
         rec . currentRoom .= r
 
@@ -189,10 +192,10 @@ addexitCmd = mkCommand "addexit" "Erstellt einen neuen Ausgang im aktuellen Raum
 
         case room of
           "#" -> do
-            (m', r) <- hoistMaybe (stackTrace "mapper" "Could not create room") $ mapAddRoom m
+            (m', r) <- liftMaybe (stackTrace "mapper" "Could not create room") $ mapAddRoom m
             rec . mapStore . baseMap .= mapAddExit cur exit r layer m'
           room -> do
-            roomId <- findRoom room >>= hoistMaybe (stackTrace "mapper" "Could not find target room")
+            roomId <- findRoom room >>= liftMaybe (stackTrace "mapper" "Could not find target room")
             rec . mapStore . baseMap %= mapAddExit cur exit roomId layer
 
 rmexitCmd = mkCommand "rmexit" "Loescht den angegebenen Ausgang" $
@@ -208,7 +211,7 @@ rmroomCmd = mkCommand "rmroom" "Loescht den angegebenen Raum" $
   f <$> arg stringParser "raum" "tag, #raumnummer oder $hash"
     where
       f room = do
-        roomId <- findRoom room >>= hoistMaybe (stackTrace "mapper" "Could not find room")
+        roomId <- findRoom room >>= liftMaybe (stackTrace "mapper" "Could not find room")
         rec . mapStore . baseMap %= mapDeleteRoom roomId
 
 clearhashCmd = mkCommand "clearhash" "Loescht den Hash des aktuellen Raums" $
@@ -277,14 +280,14 @@ parseParaLayer para
     | para == 0            = return "base"
     | otherwise            = return $ "p" ++ show para
 
-menu :: (Screen m, MonadIO m, R :@: r, MGEvent e) => MBComponent m e (Fix r) (Fix r)
+menu :: (Screen m, MonadIO m, MonadFail m, R :@: r, MGEvent e) => MBComponent m e (Fix r) (Fix r)
 menu = describe "Mapper" menu'
   where
     menu' = mconcat
         [ submenu (KAscii 'm') modeMenu
         , bindArg (KAscii 'w') "Walk" $ \r -> do
             r' <- findRoom r
-            r'' <- hoistMaybe (stackTrace "mapper" "Destination not found") r'
+            r'' <- liftMaybe (stackTrace "mapper" "Destination not found") r'
             dispatch $ walkTo modeStepper r''
         , bind (KAscii 'b') "Walk undo" $ dispatch $ walkUndo modeStepper
         , submenu (KAscii 's') $ describe "Save" $ bind (KAscii 's') "Really save" saveMap
@@ -308,7 +311,7 @@ loadMap portals = do
             return mapEmpty
         Right mapfile -> do
             echoLog $ "Loading map: " ++ mapPath
-            hoistMaybe (stackTrace "mapper" "Invalid map file") $ mapFromString mapfile
+            liftMaybe (stackTrace "mapper" "Invalid map file") $ mapFromString mapfile
     rec . mapStore .= quasiEq (mkOverlayFull ["base"] portals (undoify 20 m))
     lock <- liftIO $ acquire mapPath
     case lock of
@@ -535,7 +538,7 @@ findPathFromCurrent r = do
     cur <- use $ rec . currentRoom
     findPath cur r
 
-findRoom :: (MonadState (Fix r) m, R :@: r) => String -> m (Maybe Int)
+findRoom :: (MonadState (Fix r) m, MonadFail m, R :@: r) => String -> m (Maybe Int)
 findRoom name = do
     case name of
         ('$':n) -> use $ rec . mapStore . hashIndex . applying n

@@ -36,7 +36,7 @@ instance Functor (TF a b) where
   fmap f (TAwait g)   = TAwait (f . g)
 
 newtype T a b m r = T { unT :: FreeT (TF a b) m r }
-  deriving (Functor, Applicative, Monad, MonadFree (TF a b))
+  deriving (Functor, Applicative, Monad, MonadFail, MonadFree (TF a b))
 
 type Trigger a = T a a
 

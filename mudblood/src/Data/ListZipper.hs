@@ -22,7 +22,7 @@ module Data.ListZipper
 import Prelude hiding (length)
 import qualified Prelude
 
-import Data.Foldable hiding (toList)
+import Data.Foldable hiding (toList, length)
 import Data.Traversable
 
 data Zipper a = Zip ![a] ![a]

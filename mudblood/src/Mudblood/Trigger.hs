@@ -24,7 +24,7 @@ module Mudblood.Trigger
 
 import Control.Trigger
 import Control.Monad
-import Control.Monad.Error
+import Control.Monad.Except
 import Control.Monad.Trans.Maybe
 import Control.Monad.State
 import Control.Command
@@ -41,6 +41,7 @@ import Mudblood.Telnet (TelnetNeg (..), TelnetCommand (..))
 import Mudblood.Trigger.Event
 import Mudblood.Text
 import Mudblood.Screen
+import Data.Error
 import Data.GMCP
 import Data.Carte
 
@@ -172,7 +173,7 @@ joinBlockMultiline = mconcat . intersperse (toAS "\n")
 
 -----------------------------------------------------------------------------
 
-commandTrigger :: (MonadError e m, Error e, CommandEvent :<: a) => Command (Iteration (Ev a) m) r -> Iteration (Ev a) m r
+commandTrigger :: (MonadError e m, MonadFail m, Error e, CommandEvent :<: a) => Command (Iteration (Ev a) m) r -> Iteration (Ev a) m r
 commandTrigger cmd = do
     args <- parse' $ do
         (name', args) <- fetchCommand

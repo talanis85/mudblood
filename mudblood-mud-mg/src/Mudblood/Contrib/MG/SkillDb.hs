@@ -1,6 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Mudblood.Contrib.MG.SkillDb
     ( R, component
@@ -14,15 +16,16 @@ module Mudblood.Contrib.MG.SkillDb
 
 import Mudblood
 import Mudblood.Component.Assets
-import qualified Database.SQLite as SQL
+import qualified Database.SQLite.Simple as SQL
 
+import Control.Exception
 import Control.Lens
 import Control.Monad
 import Text.Printf
 
 --------------------------------------------------------------------------------------------------
 
-type SkillDbHandle = SQL.SQLiteHandle
+type SkillDbHandle = SQL.Connection
 
 data R a = R
     { _stHandle :: Maybe SkillDbHandle
@@ -60,24 +63,22 @@ skillC querySkills = commandC (querySkillsCmd querySkills)
 loadSkillDb :: (Assets :@: r, R :@: r, MonadIO m) => MBX e (Fix r) m ()
 loadSkillDb = do
     path <- getCharAssetPath "skills"
-    h <- liftIO $ SQL.openConnection path
-    liftIO $ SQL.execStatement_ h schema
+    h <- liftIO $ SQL.open path
+    (r :: Either SomeException ()) <- liftIO $ try $ SQL.execute_ h schema
     rec . stHandle .= Just h
 
-readSkill :: SQL.SQLiteHandle -> String -> IO Int
+readSkill :: SQL.Connection -> String -> IO Int
 readSkill sql sk = do
-    res <- SQL.execStatement sql $ "SELECT value FROM skills WHERE name='" ++ sk ++ "' ORDER BY date DESC"
+    res <- SQL.query sql "SELECT value FROM skills WHERE name=? ORDER BY date DESC" (SQL.Only sk)
     return $ case res of
-        Left err -> 0
-        Right [] -> 0
-        Right (r:_) -> case r of
-            (((_, SQL.Int v):_):_) -> fromIntegral v
-            _ -> 0
+        [] -> 0
+        (SQL.Only v : _) -> v
 
-writeSkill :: SQL.SQLiteHandle -> String -> Int -> IO ()
+writeSkill :: SQL.Connection -> String -> Int -> IO ()
 writeSkill sql sk val = do
-    SQL.execStatement_ sql $
-        "INSERT INTO skills (name, value, date) VALUES ('" ++ sk ++ "', " ++ show val ++ ", strftime('%s', 'now'))"
+    SQL.execute sql
+        "INSERT INTO skills (name, value, date) VALUES (?,?,strftime('%s', 'now'))"
+        (sk, val)
     return ()
 
 updateSkills :: SkillDbHandle -> [(String, Int)] -> IO [(String, Int, Int)]

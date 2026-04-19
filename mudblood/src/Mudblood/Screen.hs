@@ -17,7 +17,7 @@ data Output = OutputLine AttrString
             | OutputInfo String
     deriving (Show)
 
-class (Monad m) => Screen m where
+class (Monad m, MonadFail m) => Screen m where
     outputS :: Output -> m ()
     sendS :: (Sendable a) => a -> m ()
     setPromptS :: String -> m ()

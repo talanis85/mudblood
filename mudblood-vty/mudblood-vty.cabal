@@ -31,7 +31,8 @@ library
   build-depends:       base, containers, mtl, process, utf8-string, time, bifunctors, semigroupoids
                      , parsec
                      , MissingH
-                     , vty >= 5.0
+                     , vty
+                     , vty-unix
                      , mudblood
                      , stm
                      , old-locale

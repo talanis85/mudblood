@@ -119,7 +119,7 @@ unhands = do
 ------------------------------------------------------------------------------
 
 -- | Compiled regexes for attack messages
-attackMap :: (MonadPlus m) => [AttrString -> m (String, Int, Int)]
+attackMap :: (MonadPlus m, MonadFail m) => [AttrString -> m (String, Int, Int)]
 attackMap = map f
             [ ("verfehlst (.+)",                                    0,   0,   "")
             , ("kitzelst (.+) am Bauch",                            1,   1,   "kitzelst")
@@ -138,7 +138,7 @@ attackMap = map f
     where f (r,a,b,c) = regex1 ("^  Du " ++ r ++ "\\.") >=> \name -> return (name, a, b)
 
 -- | Compiled regexes for defend messages
-defenseMap :: (MonadPlus m) => [AttrString -> m (String, Int, Int)]
+defenseMap :: (MonadPlus m, MonadFail m) => [AttrString -> m (String, Int, Int)]
 defenseMap = map f
              [ ("verfehlt Dich",                                    0,   0,   "")
              , ("kitzelt Dich am Bauch",                            1,   1,   "kitzelt Dich")
@@ -157,7 +157,7 @@ defenseMap = map f
     where f (r,a,b,c) = regex1 ("^  (.+) " ++ r ++ "\\.") >=> \name -> return (name, a, b)
 
 -- | Compiled regexes for fitness descriptions
-fitnessMap :: (MonadPlus m) => [AttrString -> m (String, Int)]
+fitnessMap :: (MonadPlus m, MonadFail m) => [AttrString -> m (String, Int)]
 fitnessMap = map f
       [ ("ist absolut fit",                    100)
       , ("ist schon etwas geschwaecht",        90)
@@ -178,7 +178,7 @@ fetchAttackLine = fetchLine >>= stack (guardFirstOf attackMap)
 
 fetchDefenseLine = fetchLine >>= stack (guardFirstOf defenseMap)
 
-fetchWeaponLine :: (Monad m, LineEvent :<: a) => Parser (Ev a) m (String, Maybe String, String)
+fetchWeaponLine :: (Monad m, MonadFail m, LineEvent :<: a) => Parser (Ev a) m (String, Maybe String, String)
 fetchWeaponLine = fetchLine >>= regex2 "^  (.+) greift Dich (.+) an\\.$" >>= \(who, weapon) -> return (last (words who), Nothing, weapon)
 
 fetchEscape = fetchLineRegex "^Die Angst ist staerker als Du \\.\\.\\. Du willst nur noch weg hier\\.$"
@@ -194,7 +194,7 @@ fetchDeath = msum $ map fetchLineRegex
 
 data FightEvent = AttackEvent Int Int | DefendEvent Int Int
 
-triggerCombatC :: (Monad m, LineEvent :<: e) => (AttrString -> FightEvent -> Iteration (Ev e) (MB u m) ()) -> MBComponent m e u u
+triggerCombatC :: (Monad m, MonadFail m, LineEvent :<: e) => (AttrString -> FightEvent -> Iteration (Ev e) (MB u m) ()) -> MBComponent m e u u
 triggerCombatC formatTrigger = attackC >>> defendC
   where
     attackC = triggerC 100 $ permanent $ do

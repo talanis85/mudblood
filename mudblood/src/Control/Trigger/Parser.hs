@@ -30,7 +30,7 @@ instance Functor (PF t) where
   fmap f (PFetch g) = PFetch (fmap f g)
 
 newtype P a m r = P { unP :: FreeT (PF a) (StateT ([a], [a]) (Iteration a m)) r }
-  deriving (Monad, Applicative, Functor, MonadFree (PF a))
+  deriving (Monad, Applicative, Functor, MonadFail, MonadFree (PF a))
 
 type Parser a = P a
 
@@ -79,7 +79,7 @@ try p = P $ try' (unP p)
         Free PFail -> return Nothing
         Free (PFetch f) -> FreeT (return $ Free (PFetch (try' . f)))
 
-parseLA :: (Monad m) => P a m r -> Iteration a m (r, [a])
+parseLA :: (Monad m, MonadFail m) => P a m r -> Iteration a m (r, [a])
 parseLA p =
   let parse__ = parse_ False [] [] (unP p)
       parse_ consumed la ru p' = do
@@ -96,7 +96,7 @@ parseLA p =
 -- | Use an underlying MonadState to preserve input values. This way, a failing input value
 --   will not be yielded at the end but will instead be reused in the next iteration
 --   of the parser.
-parseLAS :: (MonadState [a] m) => P a m r -> Iteration a m (r, [a])
+parseLAS :: (MonadState [a] m, MonadFail m) => P a m r -> Iteration a m (r, [a])
 parseLAS p =
   let parse__ = parse_ False [] [] (unP p)
       parse_ consumed la ru p' = do
@@ -114,14 +114,14 @@ parseLAS p =
                                (y:ys) -> parse_ True (la' ++ [y]) ys (f y)
   in parse__
 
-parse :: (Monad m) => P a m r -> Iteration a m r
+parse :: (Monad m, MonadFail m) => P a m r -> Iteration a m r
 parse p = parseLA p >>= \(r, la) -> return r
 
-parse' :: (Monad m) => P a m r -> Iteration a m r
+parse' :: (Monad m, MonadFail m) => P a m r -> Iteration a m r
 parse' p = parseLA p >>= \(r, la) -> mapM_ pushback la >> return r
 
-parseS :: (MonadState [a] m) => P a m r -> Iteration a m r
+parseS :: (MonadState [a] m, MonadFail m) => P a m r -> Iteration a m r
 parseS p = parseLAS p >>= \(r, la) -> return r
 
-parseS' :: (MonadState [a] m) => P a m r -> Iteration a m r
+parseS' :: (MonadState [a] m, MonadFail m) => P a m r -> Iteration a m r
 parseS' p = parseLAS p >>= \(r, la) -> mapM_ pushback la >> return r

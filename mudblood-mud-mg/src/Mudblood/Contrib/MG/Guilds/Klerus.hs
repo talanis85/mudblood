@@ -57,7 +57,7 @@ makeLenses ''R
 
 ------------------------------------------------------------------------------
 
-component :: (SkillDb.R :@: r, MonadIO m, MBEvent e) => MBComponent m e (Fix r) (Fix (R :*: r))
+component :: (SkillDb.R :@: r, MonadIO m, MonadFail m, MBEvent e) => MBComponent m e (Fix r) (Fix (R :*: r))
 component =
       stateC mkSt
   >>> triggerC 50 spellStateTriggers

@@ -1,0 +1,17 @@
+flags: {}
+packages:
+  - ./mudblood
+  - ./mudblood-mud-mg
+  - ./mudblood-vty
+  - ./mudblood-talanis
+extra-deps:
+#   - base-orphans-0
+#   - vty-5.2.9
+#   - sqlite-0.5.2.2
+#   - vinyl-0.5.1
+#   - indentparser-0.1
+  - flock-0.3.2.1
+resolver: lts-22.44
+nix:
+  enable: true
+  # shell-file: stack.nix

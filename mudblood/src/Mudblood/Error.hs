@@ -14,8 +14,10 @@ import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Except
 
+import Data.Error
+
 newtype StackTrace = StackTrace [(String, String)]
-    deriving (Monoid)
+    deriving (Semigroup, Monoid)
 
 instance Error StackTrace where
     noMsg = StackTrace [("", "")]

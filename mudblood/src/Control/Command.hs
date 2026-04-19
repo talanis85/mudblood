@@ -28,6 +28,8 @@ import Text.Parsec
 import qualified Text.Parsec.Language as L
 import qualified Text.Parsec.Token as T
 
+import Data.Error
+
 type Command m r = CommandInfo (m r)
 
 data Arg a = Arg

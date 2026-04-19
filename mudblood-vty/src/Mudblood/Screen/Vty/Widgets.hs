@@ -188,7 +188,7 @@ a <!> b
     validImg a = V.imageWidth a > 0 && V.imageHeight a > 0
 
 drawLine :: Int -> (ZonedTime, (String, AttrString)) -> V.Image
-drawLine w (ts, (i, l)) = minImage $        (V.string timestampAttr $ formatTime defaultTimeLocale "%H:%M:%S " ts)
+drawLine w (ts, (i, l)) = minImage $        (V.string timestampAttr $ formatTime Data.Time.Format.defaultTimeLocale "%H:%M:%S " ts)
                                       V.<|> (V.string timestampAttr $ padRight w ' ' i)
                                       V.<|> (V.string V.defAttr " ")
                                       V.<|> drawAttrString l

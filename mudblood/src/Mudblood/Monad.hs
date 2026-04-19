@@ -24,7 +24,7 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.State
-import Control.Monad.Error
+import Control.Monad.Except
 import Control.Monad.Writer
 import Control.Monad.Morph
 import Control.Lens
@@ -32,6 +32,7 @@ import Control.Command
 
 import Control.Trigger
 
+import Data.Error
 import Data.Maybe
 import Data.Menu
 import qualified Data.Map as M
@@ -51,7 +52,7 @@ data MBRState s e u m = MBRState
   }
 
 newtype MB u m r = MB { runMB :: StateT u (ExceptT StackTrace m) r }
-  deriving (Functor, Applicative, Monad, MonadState u, MonadError StackTrace, MonadIO)
+  deriving (Functor, Applicative, Monad, MonadFail, MonadState u, MonadError StackTrace, MonadIO)
 
 instance MonadTrans (MB u) where
   lift = MB . lift . lift
@@ -78,7 +79,7 @@ actionWithArg = Action . Right
 --------------------------------------------------------------------------------------------------
 
 newtype MBR s e u m r = MBR { runMBR :: StateT (MBRState s e u m) (MB u m) r }
-  deriving (Functor, Applicative, Monad, MonadState (MBRState s e u m), MonadError StackTrace)
+  deriving (Functor, Applicative, Monad, MonadFail, MonadState (MBRState s e u m), MonadError StackTrace)
 
 liftMBR :: (Monad m) => MB u m r -> MBR s e u m r
 liftMBR = MBR . lift
@@ -92,7 +93,7 @@ mbrPutExtra x = modify $ \s -> s { mbrExtra = x }
 --------------------------------------------------------------------------------------------------
 
 newtype MBX e u m r = MBX { runMBX :: WriterT ([Ev e], Maybe (Trigger (Ev e) (MB u m) ())) (MB u m) r }
-  deriving (Functor, Applicative, Monad, MonadWriter ([Ev e], Maybe (Trigger (Ev e) (MB u m) ())), MonadError StackTrace, MonadIO, MonadState u)
+  deriving (Functor, Applicative, Monad, MonadFail, MonadWriter ([Ev e], Maybe (Trigger (Ev e) (MB u m) ())), MonadError StackTrace, MonadIO, MonadState u)
 
 instance MonadTrans (MBX e u) where
   lift = MBX . lift . lift

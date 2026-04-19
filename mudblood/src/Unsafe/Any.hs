@@ -5,3 +5,4 @@ module Unsafe.Any
 
 import Unsafe.Coerce
 import GHC.Prim
+import GHC.Types
