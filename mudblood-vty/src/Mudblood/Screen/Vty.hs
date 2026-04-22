@@ -199,7 +199,11 @@ needUpdate = scrUpdate .= True
 run :: (MBEvent e) => Maybe (UserWidget (MB u VtyScreen)) -> MBComponent VtyScreen e () u -> IO ()
 run widget component = do
     st <- initScreen
-    void $ evalVtyScreen (runWithComponent component widget runner) st
+    result <- evalVtyScreen (runWithComponent component widget runner) st
+    case result of
+      Left st -> putStrLn ("Vty Error: " ++ show st)
+      Right (Left st') -> putStrLn ("Mudblood Error: " ++ show st')
+      Right (Right ()) -> return ()
 
 showError :: (Show a) => a -> VtyScreen ()
 showError = appendLine 0 . toAS . ("ERROR: " ++) . show
