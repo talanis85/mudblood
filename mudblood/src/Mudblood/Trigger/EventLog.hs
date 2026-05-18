@@ -23,7 +23,7 @@ data LoggedEvent =
     LoggedLineEvent AttrString
   | LoggedSendEvent String
   | LoggedTelnetEvent TelnetNeg
-  | LoggedGMCPEvent GMCP
+  -- | LoggedGMCPEvent GMCP
   deriving (Generic)
 
 instance S.Serialize LoggedEvent
@@ -36,7 +36,7 @@ eventLog path = do
       [ LoggedLineEvent <$> fetchLine
       , LoggedSendEvent <$> fetchSend
       , LoggedTelnetEvent <$> fetchTelnet
-      , LoggedGMCPEvent <$> fetchGMCP
+      -- , LoggedGMCPEvent <$> fetchGMCP
       ]
     let bs = S.encodeLazy ev
         b64 = B64.encode bs
@@ -53,7 +53,7 @@ replayEventLog path = do
                       LoggedLineEvent x -> yieldLine x
                       LoggedSendEvent x -> yieldSend x
                       LoggedTelnetEvent x -> yieldTelnet x
-                      LoggedGMCPEvent x -> yieldGMCP x
+                      -- LoggedGMCPEvent x -> yieldGMCP x
 
 readEventLog :: (LineEvent :<: a, SendEvent :<: a, TelnetEvent :<: a, GMCPEvent :<: a) => FilePath -> IO [Ev a]
 readEventLog path = do
@@ -66,4 +66,4 @@ readEventLog path = do
                       LoggedLineEvent x -> return $ mkEv $ LineEvent x
                       LoggedSendEvent x -> return $ mkEv $ SendEvent x
                       LoggedTelnetEvent x -> return $ mkEv $ TelnetEvent x
-                      LoggedGMCPEvent x -> return $ mkEv $ GMCPEvent x
+                      -- LoggedGMCPEvent x -> return $ mkEv $ GMCPEvent x

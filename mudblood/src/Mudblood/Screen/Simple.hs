@@ -37,13 +37,15 @@ import System.IO
 import Text.Printf
 import Data.Word
 
+import qualified System.Console.ANSI as ANSI
+
 -----------------------------------------------------------------------------
 
 newtype SimpleScreen a = SimpleScreen (ExceptT StackTrace (StateT ScreenState IO) a)
     deriving (Functor, Applicative, Monad, MonadFail, MonadIO, MonadState ScreenState, MonadError StackTrace)
 
-execSimpleScreen :: SimpleScreen a -> ScreenState -> IO ()
-execSimpleScreen (SimpleScreen s) state = void $ runStateT (void $ runExceptT s) state
+runSimpleScreen :: SimpleScreen a -> ScreenState -> IO (Either StackTrace a)
+runSimpleScreen (SimpleScreen s) state = evalStateT (runExceptT s) state
 
 -----------------------------------------------------------------------------
 
@@ -64,6 +66,7 @@ data ScreenState = ScreenState
     , _scrSocket         :: Maybe TelnetSocket
     , _scrQuit           :: Bool
     , _scrPrompt         :: [Word8]
+    , _scrMarkedPrompt   :: String
     , _scrAttr           :: Attr
     , _scrMode           :: Mode
     , _scrTime           :: Ticks
@@ -80,7 +83,7 @@ instance Screen SimpleScreen where
                      OutputInfo x  -> return ()
                      OutputLog x   -> outputMessage "LOG" x
   sendS s      = sendToCurrentSocket s
-  setPromptS p = return ()
+  setPromptS p = scrMarkedPrompt .= p
   connectS h p = connectScreen h p
   timeS        = use scrTime
   setStatusS s = return ()
@@ -102,6 +105,7 @@ initSimpleScreen = do
     forkIO $ timerLoop chan
     return $ ScreenState
         { _scrPrompt = []
+        , _scrMarkedPrompt = ""
         , _scrAttr = defaultAttr
         , _scrSocket = Nothing
         , _scrEventChan = chan
@@ -115,7 +119,11 @@ initSimpleScreen = do
 run :: (MBEvent e) => MBComponent SimpleScreen e () u -> IO ()
 run component = do
     st <- initSimpleScreen
-    execSimpleScreen (runWithComponent component () runner) st
+    r <- runSimpleScreen (runWithComponent component () runner) st
+    case r of
+        Left st -> putStrLn $ "PANIC: " ++ show st
+        Right (Left st) -> putStrLn $ "PANIC: " ++ show st
+        Right (Right ()) -> return ()
 
 runner :: (MBEvent e) => SMBR e u ()
 runner = do
@@ -134,12 +142,20 @@ runner = do
                 oldPrompt <- lift $ use scrPrompt
                 oldAttr   <- lift $ use scrAttr
                 let (ls, newPrompt, newAttr) = decode oldPrompt chars oldAttr
+                -- lift $ liftIO $ putStrLn $ "NEW PROMPT: " ++ show newPrompt
                 mapM_ (triggerWithDefault defaultHandler . mkEv . LineEvent) ls
                 lift $ do
                     scrPrompt .= newPrompt
                     scrAttr   .= newAttr
-                    outputPrompt newPrompt
+                    -- outputPrompt newPrompt
             SSendEvent str -> do
+                case str of
+                    ('/':cmd) ->
+                        command' defaultHandler cmd `catchError` (lift . outputError)
+                    _ -> do
+                        lift $ scrPrompt .= []
+                        triggerWithDefault defaultHandler $ mkEv $ SendEvent str
+                {-
                 curMode <- lift $ use scrMode
                 case curMode of
                     NormalMode -> do
@@ -158,11 +174,13 @@ runner = do
                         lift $ scrMode .= NormalMode
                         mbrR' defaultHandler $ runUnsafeCallback f str
                     -}
+                -}
             SCloseEvent -> do
                 lift $ outputMessage "NETWORK" "Connection closed - shutting down."
                 lift $ scrQuit .= True
             STelnetEvent neg -> do
-                triggerWithDefault defaultHandler $ mkEv $ TelnetEvent neg
+                handleTelneg neg
+
             STimeEvent t -> do
                 lift $ scrTime .= t
                 triggerWithDefault defaultHandler $ mkEv $ TimeEvent t
@@ -183,6 +201,20 @@ handleCmd cmd arg = do
                 Right actionFun -> case arg of
                     Nothing -> return () -- missing arg
                     Just arg -> mbx' defaultHandler $ actionFun arg
+
+handleTelneg :: (MBEvent e) => TelnetNeg -> SMBR e u ()
+handleTelneg neg = do
+    case neg of
+        TelnetNeg (Just CMD_EOR) Nothing [] -> do
+            p <- lift $ use scrPrompt
+            lift $ scrPrompt .= []
+            triggerWithDefault defaultHandler $ mkEv $ PromptEvent (escapeAll p)
+        TelnetNeg (Just CMD_WILL) (Just OPT_EOR) [] ->
+            liftMBR $ send $ TelnetNeg (Just CMD_DO) (Just OPT_EOR) []
+        _ -> return ()
+    case telnetToGMCP neg of
+        Nothing   -> triggerWithDefault defaultHandler $ mkEv $ TelnetEvent neg
+        Just gmcp -> triggerWithDefault defaultHandler $ mkEv $ GMCPEvent gmcp
 
 -----------------------------------------------------------------------------
 
@@ -208,29 +240,44 @@ connectScreen host port = do
 
     telnetReceiveProc chan ev = atomically $ writeTChan chan ev
 
+{-
 outputPrompt :: [Word8] -> SimpleScreen ()
 outputPrompt p = liftIO $ do
-    putStr "\r                                                                                   \r"
-    putStr $ escapeAll p
+    ANSI.clearLine
+    ANSI.setCursorColumn 0
+    -- putStr "\x1B[2K\r"
+    -- putStr "\r                                                                                   \r"
+    putStr p
     hFlush stdout
+-}
 
 outputMessage :: String -> String -> SimpleScreen ()
 outputMessage t msg = do
-    p <- use scrPrompt
+    p <- use scrMarkedPrompt
     liftIO $ do
-        putStr "\r                                                                                   \r"
+        ANSI.clearLine
+        ANSI.setCursorColumn 0
+        -- putStr "\x1B[2K\r"
+        -- putStr "\r                                                                                   \r"
         putStrLn $ printf "[%-8s] %s" t msg
-        putStr $ "[PROMPT  ] " ++ escapeAll p
+        putStr p
+        -- putStr $ "[PROMPT  ] " ++ escapeAll p
         hFlush stdout
 
 outputLine :: AttrString -> SimpleScreen ()
 outputLine l = do
-    p <- use scrPrompt
+    p <- use scrMarkedPrompt
     liftIO $ do
-        putStr "\r                                                                                   \r"
-        putStrLn $ fromAS l
-        putStr $ escapeAll p
+        ANSI.clearLine
+        ANSI.setCursorColumn 0
+        -- putStr "\x1B[2K\r"
+        -- putStr "\r                                                                                   \r"
+        putStrLn $ encodeAS l
+        putStr p
         hFlush stdout
+
+outputError :: StackTrace -> SimpleScreen ()
+outputError st = outputMessage "ERROR" $ show st
 
 sendToCurrentSocket :: (Sendable a) => a -> SimpleScreen ()
 sendToCurrentSocket dat = do

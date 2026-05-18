@@ -52,6 +52,7 @@ library
                      , Unsafe.Any
 
   other-modules:       Mudblood.Mapper.Map
+                     , Mudblood.Mapper.Json
                      , Mudblood.Mapper.Walk
 
                      , Text.Parsec.Word8
@@ -83,7 +84,7 @@ library
                      , bytestring
                      , binary
                      , network
-                     , json
+                     , aeson
                      , stm
                      , time
                      , MissingH
@@ -100,6 +101,11 @@ library
                      , ghc-prim
                      , filepath
                      , semigroups
+                     , vector
+                     , text
+                     , directory
+                     , text-ansi
+                     , ansi-terminal
 
   hs-source-dirs:      src
   ghc-options:         -O1 -auto-all -caf-all

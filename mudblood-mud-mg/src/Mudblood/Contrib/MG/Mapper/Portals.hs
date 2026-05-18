@@ -3,13 +3,15 @@ module Mudblood.Contrib.MG.Mapper.Portals
     ( mapAddPortals
     ) where
 
+import Control.Lens
 import Data.Maybe
 import Data.List
 import Data.Cache
 import Data.Undo
 
 import Mudblood
-import Mudblood.Contrib.MG.Mapper.Types
+import Mudblood.UserData
+import Mudblood.Contrib.MG.Mapper.MGMap
 
 portals =
     [ (1, ("tamibar", "bf586f14b202c43ea8727aefe7d5ae8a"))
@@ -50,13 +52,13 @@ portals =
     , (40, ("abgrund", "9ffe18fd06b3413a982ae16191d27b98"))
     ]
 
-mapAddPortals :: [Int] -> IndexedMap -> Map
-mapAddPortals pset im = let g = current $ uncache im
-                        in foldl addPortal g $ mapMaybe (\x -> fmap (\y -> (x, y)) $ lookup x portals) pset
+mapAddPortals :: [Int] -> MGMap -> MGMap
+mapAddPortals pset g = foldl addPortal g $ mapMaybe (\x -> fmap (\y -> (x, y)) $ lookup x portals) pset
     where
-        findHash = grab im
+        -- findHash hash = mapFindRoomByUserValue "hash" (== userValueFromString hash) m
+        findHash hash = mapFindRoomBy (\x -> hash `elem` x ^. roomValue . mgRoomHash) g
         addPortal g (p, (tag, hash)) = foldl (addPortal' (p, (tag, hash))) g $ mapMaybe (\x -> fmap (\y -> (x, y)) $ lookup x portals) pset
         addPortal' (p, (tag, hash)) g (p', (tag', hash')) =
             case (findHash hash, findHash hash') of
-                (Just n, Just n') -> mapAddExit n ("t " ++ show p') n' "base" g
+                (Just n, Just n') -> mapAddExit n ("t " ++ show p') n' "base" initMGExitData g
                 _ -> g

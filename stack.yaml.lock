@@ -5,12 +5,12 @@
 
 packages:
 - completed:
-    hackage: flock-0.3.2.1@sha256:621faa36646ccd1c33a654f7e4fcdf3843dcbf12fbf4b3aade3e9cf90441deb4,1093
+    hackage: vty-windows-0.2.0.0@sha256:91a11bab7bb79f8ee0d4a8166824ed855251cbac101eed3fdf607ad519a13557,2815
     pantry-tree:
-      sha256: 2483a4e7f16f7f34539aa547983d4926d073197d1ad47bdaa78560f2de35bf97
-      size: 349
+      sha256: 50d343eb4df5d1901b1773baeaff8ae7c6a88204d0997430e26f0dc50a1a63eb
+      size: 2160
   original:
-    hackage: flock-0.3.2.1
+    hackage: vty-windows-0.2.0.0
 snapshots:
 - completed:
     sha256: 238fa745b64f91184f9aa518fe04bdde6552533d169b0da5256670df83a0f1a9

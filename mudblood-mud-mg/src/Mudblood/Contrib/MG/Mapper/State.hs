@@ -7,19 +7,19 @@ module Mudblood.Contrib.MG.Mapper.State
     , MapperMode (..)
     , WalkMode (..)
     -- * Lenses
-    , mapStore, fileName, roomHash, currentRoom, walkStack
+    , fileName, roomHash, currentRoom, walkStack
     , mode, walkMode
-    , overlay, currentRoomData
-    , baseMap, effectiveMap, effectiveEqMap
-    , undoMap
-    , hashIndex
-    , applying
+    , overlay, currentRoomData, exitDataHere
+    , baseMap, effectiveMap -- , effectiveEqMap
+    -- , undoMap
+    -- , hashIndex
+    -- , applying
     -- * Overlays and Portals
-    , mkOverlayFull
+    -- , mkOverlayFull
     -- * Re-exports
-    , grab, uncache, Undo.undoify
-    -- * Undos
-    , undo, redo
+    -- , grab, uncache, Undo.undoify
+    -- -- * Undos
+    -- , undo, redo
     ) where
 
 import Data.Carte
@@ -34,7 +34,8 @@ import Control.Lens
 
 import Mudblood
 import Mudblood.Contrib.MG.Mapper.Portals
-import Mudblood.Contrib.MG.Mapper.Types
+import Mudblood.Contrib.MG.Mapper.MapStore
+import Mudblood.Contrib.MG.Mapper.MGMap
 
 import System.Lock.SimpleLock
 
@@ -43,32 +44,32 @@ import System.Lock.SimpleLock
 data R a = R
     { _mapStore     :: MapStore
     , _fileName     :: Maybe (Either FilePath (FilePath, Lock))
-    , _roomHash     :: String
+    , _roomHash     :: Maybe String
     , _currentRoom  :: Int
     , _walkStack    :: Z.Zipper Int
-    , _overlay'     :: [String]
     , _mode         :: MapperMode
     , _walkMode     :: WalkMode
     }
   deriving (Functor)
 
+{-
 -- | Generate an 'OverlayMap' from an 'UndoableMap' using the specified overlay and portal set.
-mkOverlayFull :: [String] -> [Int] -> UndoableMap -> OverlayMap
+mkOverlayFull :: [String] -> [Int] -> Map -> Map
 mkOverlayFull over ps m = cache (mapOverlay ["base"] . grab) $ cache (mapAddPortals ps) $ cache (indexLookup . mapGenRoomIndex "hash" hashIndexer . Undo.current) m
   where
     hashIndexer (UserValueString h) = [UserValueString h]
     hashIndexer (UserValueArray hs) = hs
     hashIndexer _ = []
     indexLookup m s = M.lookup (UserValueString s) m
+-}
 
 -- | The default 'R'
-mkSt = R
-    { _mapStore       = quasiEq $ mkOverlayFull ["base"] [1..40] $ Undo.undoify 20 mapEmpty
+mkSt portals = R
+    { _mapStore       = mapStoreInit initMGRoomData portals ["base"]
     , _fileName       = Nothing
-    , _roomHash       = ""
+    , _roomHash       = Nothing
     , _currentRoom    = 0
     , _walkStack      = Z.empty
-    , _overlay'       = ["base"]
     , _mode           = ModeFixed
     , _walkMode       = WalkSafe
     }
@@ -90,6 +91,16 @@ data WalkMode = WalkFast | WalkSafe | WalkAggro
 
 makeLenses ''R
 
+overlay :: Lens' (R a) [String]
+overlay = mapStore . mapStoreOverlay
+
+baseMap :: Lens' (R a) MGMap
+baseMap = mapStore . mapStoreBase
+
+effectiveMap :: Getter (R a) MGMap
+effectiveMap = mapStore . mapStoreEffective
+
+{-
 quasiEqer :: Lens' (QuasiEq a) a
 quasiEqer = lens unQuasiEq (\x y -> updateQuasiEq (const y) x)
 
@@ -125,20 +136,47 @@ hashIndex = quasiEqer . cacher . cacher . grabber
 
 applying :: b -> Getter (b -> c) c
 applying y = to (\x -> x y)
+-}
 
 {-
 roomWithHash :: String -> Getter MapStore (Maybe Int)
 roomWithHash hash = hashIndex . applying hash
 -}
 
--- | The 'UserData' of the current 'Node'.
-currentRoomData :: Lens' (R a) UserData
-currentRoomData = lens getter setter
+{-
+baseMap :: Lens' MGMap MGMap
+baseMap = id
+-}
+
+{-
+effectiveMap :: Getter (R a) MGMap
+effectiveMap = to $ \st ->
+  mapAddPortals (st ^. knownPortals) $
+  mapOverlay (st ^. overlay) $
+  st ^. mapStore
+-}
+
+-- | The 'RoomData' of the current 'Node'.
+currentRoomData :: Traversal' (R a) (RoomData MGRoomData)
+currentRoomData = traversal go
+  where
+    go focus st = let cur = st ^. currentRoom
+                   in (baseMap . mapRoomData cur) focus st
+
+exitDataHere :: String -> Maybe String -> Traversal' (R a) (ExitData MGExitData)
+exitDataHere key layer = traversal go
+  where
+    go focus st = let cur = st ^. currentRoom
+                   in (baseMap . mapExitData cur key layer) focus st
+
+{-
+lens getter setter
   where
     getter x = let cur = x ^. currentRoom
-               in x ^. mapStore . baseMap . mapRoomData cur
+               in x ^. mapStore . mapRoomData cur
     setter x y = let cur = x ^. currentRoom
-                 in x & mapStore . baseMap . mapRoomData cur .~ y
+                 in x & mapStore . mapRoomData cur .~ y
+-}
 
 -----------------------------------------------------------------------------
 
@@ -149,8 +187,8 @@ extractEffective = grab
 
 -- uncacheBase = current . uncache . uncache . uncache
 
-undo :: (MonadState (Fix r) m, R :@: r) => m ()
-undo = rec . mapStore %= (updateQuasiEq $ update $ update $ update $ Undo.undo)
-
-redo :: (MonadState (Fix r) m, R :@: r) => m ()
-redo = rec . mapStore %= (updateQuasiEq $ update $ update $ update $ Undo.redo)
+-- undo :: (MonadState (Fix r) m, R :@: r) => m ()
+-- undo = rec . mapStore %= Undo.undo
+-- 
+-- redo :: (MonadState (Fix r) m, R :@: r) => m ()
+-- redo = rec . mapStore %= Undo.redo

@@ -8,7 +8,7 @@ module Mudblood.Text
     , Color (DefaultColor, Black, White, Cyan, Magenta, Blue, Yellow, Green, Red, RGB)
     , defaultAttr
     -- * Conversion to and from strings
-    , decodeAS, toAS, fromAS
+    , decodeAS, encodeAS, toAS, fromAS
     , escapeAll
     -- * Misc transformations
     , (<>), mapAS
@@ -42,6 +42,8 @@ import GHC.Exts
 import GHC.Generics
 
 import Data.Serialize
+
+import qualified String.ANSI as ANSI
 
 instance Serialize Style
 instance Serialize Color
@@ -264,6 +266,44 @@ decodeAS :: [Word8]                     -- ^ The input string - may contain ANSI
 decodeAS s a = case runParser ansiParser a "" s of
     Right as -> Just as
     Left err -> Nothing
+
+-- | Convert an AttrString into an ANSI encoding
+encodeAS :: AttrString -> String
+encodeAS (AttrString as) = encodeAS' as
+  where
+    encodeAS' [] = []
+    encodeAS' (x:xs) = f x ++ encodeAS' xs
+    f (str, attr) =
+      let stylef = case attrStyle attr of
+            StyleBold -> ANSI.bold
+            StyleUnderline -> ANSI.underline
+            _ -> id
+          attr' = case attrStyle attr of
+            StyleReverse -> attr { attrFg = attrBg attr, attrBg = attrFg attr }
+            _ -> attr
+          fgf = case attrFg attr' of
+            DefaultColor -> id
+            Black -> ANSI.black
+            White -> ANSI.white
+            Cyan -> ANSI.cyan
+            Magenta -> ANSI.magenta
+            Blue -> ANSI.blue
+            Yellow -> ANSI.yellow
+            Green -> ANSI.green
+            Red -> ANSI.red
+            RGB r g b -> ANSI.rgb (fromIntegral r) (fromIntegral g) (fromIntegral b)
+          bgf = case attrBg attr' of
+            DefaultColor -> id
+            Black -> ANSI.blackBg
+            White -> ANSI.whiteBg
+            Cyan -> ANSI.cyanBg
+            Magenta -> ANSI.magentaBg
+            Blue -> ANSI.blueBg
+            Yellow -> ANSI.yellowBg
+            Green -> ANSI.greenBg
+            Red -> ANSI.redBg
+            RGB r g b -> ANSI.rgbBg (fromIntegral r) (fromIntegral g) (fromIntegral b)
+      in stylef $ fgf $ bgf str
 
 ------------------------------------------------------------------------------
 

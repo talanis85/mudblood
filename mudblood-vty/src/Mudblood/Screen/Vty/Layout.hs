@@ -1,5 +1,8 @@
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE StandaloneDeriving #-}
 module Mudblood.Screen.Vty.Layout
     ( Layout (..)
+    , AnyMap (..)
     , drawLayout
     ) where
 
@@ -16,6 +19,8 @@ import qualified Graphics.Vty as V
 
 import Mudblood.Screen.Vty.Draw
 
+data AnyMap = forall r e. AnyMap (Map r e)
+
 -- | Layouts are small pieces of information to be displayed by the screen.
 data Layout =
     LayoutEmpty
@@ -24,12 +29,13 @@ data Layout =
   | LayoutList [AttrString]
   | LayoutLabels [(String, AttrString)]
   | LayoutGauge Int Int Int
-  | LayoutMap Int Int (QuasiEq Map)
+  | LayoutMap Int Int AnyMap
   | LayoutSep
   | LayoutV Layout Layout
   | LayoutH Layout Layout
   | LayoutFocus Bool Layout
-  deriving (Eq)
+
+-- deriving instance Eq Layout
 
 instance Semigroup Layout where
   (<>) LayoutEmpty x = x
@@ -52,7 +58,7 @@ drawLayout width layout = case layout of
     LayoutLabels ls ->
         let fstmax = 1 + (maximum $ map (length . fst) ls)
         in mconcat $ map (drawLabel width fstmax) ls
-    LayoutMap h cur m -> V.resize width h $ mconcat $ map (V.string V.defAttr) $ mapDrawAscii width h cur (unQuasiEq m)
+    LayoutMap h cur (AnyMap m) -> V.resize width h $ mconcat $ map (V.string V.defAttr) $ mapDrawAscii width h cur m
     LayoutSep -> V.string V.defAttr $ take width $ repeat '-'
     LayoutV w1 w2 -> drawLayout width w1 V.<-> drawLayout width w2
       -- mconcat $ map ((V.<|> V.string V.defAttr " ") . drawLayout width) ws

@@ -42,7 +42,8 @@ library
                      , Mudblood.Contrib.MG.GMCP
                      , Mudblood.Contrib.MG.Guilds
                      , Mudblood.Contrib.MG.Guilds.Common
-                     , Mudblood.Contrib.MG.Mapper.Types
+                     , Mudblood.Contrib.MG.Mapper.MapStore
+                     , Mudblood.Contrib.MG.Mapper.MGMap
                      , Mudblood.Contrib.MG.Mapper.RoomActions
                      , Mudblood.Contrib.MG.Mapper.State
                      , Mudblood.Contrib.MG.Mapper.Portals
@@ -62,8 +63,9 @@ library
                      , sqlite-simple
                      , convertible
                      , mmorph
-                     , flock
+                     , filelock
                      , fgl
+                     , aeson
   hs-source-dirs:      src
   ghc-options:         -O1
   default-extensions:  FlexibleContexts
@@ -73,3 +75,28 @@ library
                      , TypeFamilies
                      , RankNTypes
   default-language:    Haskell2010
+
+executable mudblood-mg-serial
+  main-is: Serial.hs
+  build-depends: base
+               , mtl
+               , containers
+               , directory
+               , gitrev
+               , optparse-applicative
+               , mudblood
+               , mudblood-mud-mg
+               , lens
+               , MissingH
+  hs-source-dirs: app
+  other-modules:
+  default-language: Haskell2010
+  ghc-options: -threaded
+
+-- executable mudblood-mg-vty
+--   main-is: Vty.hs
+--   build-depends: base, mtl, containers, mudblood, mudblood-mud-mg, mudblood-vty, lens, MissingH
+--   hs-source-dirs: app
+--   other-modules:
+--   default-language: Haskell2010
+--   ghc-options: -threaded

@@ -10,13 +10,11 @@ module Mudblood.Contrib.MG.Mapper
     , module Mudblood.Contrib.MG.Mapper.RoomActions
     , module Mudblood.Contrib.MG.Mapper.UserData
 
-    , Hash
-
     , component, menu
 
     -- * Map queries
     , findRoom, findPath, findPathFromCurrent
-    , containsHash, roomArea
+    -- , roomArea
     -- , checkCurrentHash
     -- * Map actions
     , walkTo, walkUndo, walkRedo
@@ -42,6 +40,7 @@ module Mudblood.Contrib.MG.Mapper
     , splitCmd
     , weightCmd
     , addblockerCmd
+    , rmblockerCmd
     , saferoomCmd
     , unsaferoomCmd
     ) where
@@ -50,6 +49,7 @@ import Data.Carte
 import Data.Maybe
 import Data.Monoid
 import qualified Data.Map as M
+import Data.List (intercalate)
 import qualified Data.ListZipper as Z
 
 import qualified Control.Exception as Exception
@@ -75,7 +75,7 @@ import Mudblood
 import Mudblood.Component.Assets
 
 import Mudblood.Contrib.MG.Mapper.State
-import Mudblood.Contrib.MG.Mapper.Types
+import Mudblood.Contrib.MG.Mapper.MGMap
 import Mudblood.Contrib.MG.Mapper.Portals
 import Mudblood.Contrib.MG.Mapper.RoomActions
 import Mudblood.Contrib.MG.Mapper.UserData
@@ -108,32 +108,20 @@ echoMapper str = do
 
 ------------------------------------------------------------------------------
 
-type Hash = String
-
--- | Checks if a uservalue is or contains a given hash
-containsHash :: Hash -> UserValue -> Bool
-containsHash hash (UserValueString hash') = hash == hash'
-containsHash hash (UserValueArray hashes) = (UserValueString hash) `elem` hashes
-containsHash hash _ = False
-
-isEmptyHash :: UserValue -> Bool
-isEmptyHash (UserValueNull) = True
-isEmptyHash (UserValueString "") = True
-isEmptyHash (UserValueArray []) = True
-isEmptyHash _ = False
-
 -- inRoom :: (Monad m, MonadState) => String -> Parser (Ev a) m r
 inRoom h = do
-  cur  <- lift $ use $ rec . currentRoomData . userValue "hash"
-  curh <- lift $ use $ rec . roomHash
-  guard $ containsHash h cur || h == curh
+  cur    <- lift $ use $ rec . currentRoomData . roomValue . mgRoomHash
+  curh   <- lift $ use $ rec . roomHash
+  guard $ case curh of
+            Nothing -> False
+            Just hash -> hash `elem` cur
 
 ------------------------------------------------------------------------------
 
 component :: (Assets :@: r, Screen m, MonadIO m, MonadFail m, MGEvent e) => [Int] -> MBComponent m e (Fix r) (Fix (R :*: r))
-component portals = stateC mkSt
+component portals = stateC (mkSt portals)
         >>> triggerC 100 roomTrigger
-        >>> bootC (loadMap portals)
+        >>> bootC loadMap
         >>> shutdownC releaseMap
         >>> paraRoomC
         >>> statusC (("overlay: " ++) <$> show <$> use (rec . overlay))
@@ -155,29 +143,38 @@ walkmodeCmd = mkCommand "walkmode" "Setzt den Speedwalkmodus" $
 tagCmd = mkCommand "tag" "Weist dem aktuellen Raum einen Kurznamen zu" $
   f <$> arg stringParser "tag" "Kurzname"
     where
-      f newtag = rec . currentRoomData . userValue "tag" .= UserValueString newtag
+      f newtag = rec . currentRoomData . roomTag .= Just newtag
 
 roominfoCmd = mkCommand "roominfo" "Zeigt eine Uebersicht des aktuellen Raums an" $
   pure f
     where
       f = do
         cur <- use $ rec . currentRoom
-        m   <- use $ rec . mapStore . baseMap
+        m   <- use $ rec . baseMap
         let exits = mapGetExits cur m
-            hash = lookupUserValue "hash" $ m ^. mapRoomData cur
+            hash = m ^. mapRoomData cur . roomValue . mgRoomHash
         echo $ toAS $ "Id:   " ++ show cur
         echo $ toAS $ "Hash: " ++ show hash
         echo $ toAS $ "Exits:"
-        let formatExit (n, d) = printf " -- %10s - %5d - %s - %s" (exitKey d) n (exitLayer d) (if exitProvisional d then "P" else "")
+        let formatExit (n, d) =
+              let headline = printf " * %-20s %-5d %-5s %s"
+                                    (d ^. exitKey) n (d ^. exitLayer) (if d ^. exitSplit then "SPLIT" else "")
+                  blockers = case d ^. exitValue . mgExitBlockers of
+                               [] -> ""
+                               xs -> "\n   blockers: " ++ intercalate ", " xs
+                  beforeexits = case d ^. exitValue . mgExitBeforeExit of
+                               [] -> ""
+                               xs -> "\n   before-exit: " ++ intercalate ", " xs
+              in headline ++ blockers ++ beforeexits
         mapM_ (echo . toAS . formatExit) exits
 
 newroomCmd = mkCommand "newroom" "Erstellt einen neuen, isolierten Raum" $
   pure f
     where
       f = do
-        m <- use $ rec . mapStore . baseMap
-        (m', r) <- liftMaybe (stackTrace "mapper" "Could not create room") $ mapAddRoom m
-        rec . mapStore . baseMap .= m'
+        m <- use $ rec . baseMap
+        (m', r) <- liftMaybe (stackTrace "mapper" "Could not create room") $ mapAddRoom initMGRoomData m
+        rec . baseMap .= m'
         rec . currentRoom .= r
 
 addexitCmd = mkCommand "addexit" "Erstellt einen neuen Ausgang im aktuellen Raum" $
@@ -187,16 +184,16 @@ addexitCmd = mkCommand "addexit" "Erstellt einen neuen Ausgang im aktuellen Raum
     where
       f para exit room = do
         cur   <- use $ rec . currentRoom
-        m     <- use $ rec . mapStore . baseMap
+        m     <- use $ rec . baseMap
         layer <- parseParaLayer para
 
         case room of
           "#" -> do
-            (m', r) <- liftMaybe (stackTrace "mapper" "Could not create room") $ mapAddRoom m
-            rec . mapStore . baseMap .= mapAddExit cur exit r layer m'
+            (m', r) <- liftMaybe (stackTrace "mapper" "Could not create room") $ mapAddRoom initMGRoomData m
+            rec . baseMap .= mapAddExit cur exit r layer initMGExitData m'
           room -> do
             roomId <- findRoom room >>= liftMaybe (stackTrace "mapper" "Could not find target room")
-            rec . mapStore . baseMap %= mapAddExit cur exit roomId layer
+            rec . baseMap %= mapAddExit cur exit roomId layer initMGExitData
 
 rmexitCmd = mkCommand "rmexit" "Loescht den angegebenen Ausgang" $
   f <$> arg intParser "para" "Parallelweltnummer (0 fuer normal)"
@@ -205,28 +202,24 @@ rmexitCmd = mkCommand "rmexit" "Loescht den angegebenen Ausgang" $
       f para exit = do
         cur   <- use $ rec . currentRoom
         layer <- parseParaLayer para
-        rec . mapStore . baseMap %= mapDeleteExit cur exit layer
+        rec . baseMap %= mapDeleteExit cur exit layer
 
 rmroomCmd = mkCommand "rmroom" "Loescht den angegebenen Raum" $
   f <$> arg stringParser "raum" "tag, #raumnummer oder $hash"
     where
       f room = do
         roomId <- findRoom room >>= liftMaybe (stackTrace "mapper" "Could not find room")
-        rec . mapStore . baseMap %= mapDeleteRoom roomId
+        rec . baseMap %= mapDeleteRoom roomId
 
 clearhashCmd = mkCommand "clearhash" "Loescht den Hash des aktuellen Raums" $
   pure f
     where
-      f = do
-        cur <- use $ rec . currentRoom
-        rec . currentRoomData %= M.delete "hash"
+      f = rec . currentRoomData . roomValue . mgRoomHash .= []
 
 splitCmd = mkCommand "split" "Aktiviert oder deaktiviert das split-Flag fuer den angegebenen Ausgang" $
   f <$> arg stringParser "ausgang" "Zu teilender Ausgang"
     where
-      f exit = do
-        cur <- use $ rec . currentRoom
-        rec . mapStore . baseMap . mapExitData cur exit Nothing . userValue "split" %= userValueToggle
+      f exit = rec . exitDataHere exit Nothing . exitSplit %= not
 
 weightCmd = mkCommand "weight" "Setzt das Kantengewicht des angegebenen Ausgangs" $
   f <$> arg stringParser "ausgang" "Gewuenschter Ausgang"
@@ -234,30 +227,81 @@ weightCmd = mkCommand "weight" "Setzt das Kantengewicht des angegebenen Ausgangs
     where
       f exit weight = do
         when (weight < 1) $ throwError $ stackTrace "mapper" "Das Gewicht muss groesser als 0 sein."
-        cur <- use $ rec . currentRoom
-        rec . mapStore . baseMap . mapExitData cur exit Nothing . userValue "weight" .= userValueFromInt weight
+        rec . exitDataHere exit Nothing . exitValue . mgExitWeight .= weight
 
 addblockerCmd = mkCommand "addblocker" "Fuegt einen Blocker zu einem Ausgang hinzu" $
   f <$> arg stringParser "ausgang" "Ausgang"
     <*> arg stringParser "npc" "Name des Blockers"
     where 
-      f exit name = do
-        cur <- use (rec . currentRoom)
-        rec . mapStore . baseMap . mapExitData cur exit Nothing . userValue "blockers" . stringAsStringArray %= (++ [name])
+      f exit name = rec . exitDataHere exit Nothing . exitValue . mgExitBlockers %= (++ [name])
+
+rmblockerCmd = mkCommand "rmblocker" "Entfernt einen Blocker von einem Ausgang" $
+  f <$> arg stringParser "ausgang" "Ausgang"
+    <*> arg stringParser "npc" "Name des Blockers"
+    where
+      f exit name = rec . exitDataHere exit Nothing . exitValue . mgExitBlockers %= (filter (/= name))
+
+addbeforeexitCmd = mkCommand "addbeforeexit" "Fuegt einen Befehl ein, der vor dem Benutzen des Ausgangs ausgefuehrt werden soll." $
+  f <$> arg stringParser "ausgang" "Ausgang"
+    <*> arg stringParser "befehl" "Befehl"
+    where
+      f exit command = rec . exitDataHere exit Nothing . exitValue . mgExitBeforeExit %= (++ [command])
+
+clearbeforeexitCmd = mkCommand "clearbeforeexit" "Loescht die before-exit-Befehle des Ausgangs" $
+  f <$> arg stringParser "ausgang" "Ausgang"
+    where
+      f exit = rec . exitDataHere exit Nothing . exitValue . mgExitBeforeExit .= []
 
 saferoomCmd = mkCommand "saferoom" "Markiert den aktuellen Raum als sicher" $
   pure f
     where
       f = do
         cur <- use (rec . currentRoom)
-        rec . mapStore . baseMap . mapRoomData cur . userFlag "safe" .= True
+        rec . baseMap . mapRoomData cur . roomValue . mgRoomSafe .= True
 
 unsaferoomCmd = mkCommand "unsaferoom" "Markiert den aktuellen Raum als nicht sicher" $
   pure f
     where
       f = do
         cur <- use (rec . currentRoom)
-        rec . mapStore . baseMap . mapRoomData cur . userFlag "safe" .= False
+        rec . baseMap . mapRoomData cur . roomValue . mgRoomSafe .= False
+
+splitroomCmd = mkCommand "splitroom" "Teile den aktuellen Raum nach Raum-IDs auf" $
+  pure f
+    where
+      f = do
+        m <- use $ rec . baseMap
+        cur <- use $ rec . currentRoom
+        curIds <- use $ rec . baseMap . mapRoomData cur . roomValue . mgRoomHash
+        case curIds of
+          [x] -> return ()
+          (x:xs) -> do
+            rec . baseMap . mapRoomData cur . roomValue . mgRoomHash .= [x]
+            mapM_ (splitRoom cur) xs
+      splitRoom cur hash = do
+        m <- use $ rec . baseMap
+        case mapAddRoom (mgRoomHash .~ [hash] $ initMGRoomData) m of
+          Just (m', newroom) -> do
+            rec . baseMap .= m'
+            mapM_ (splitEntrance newroom) $ mapGetEntrances cur m'
+          Nothing -> throwError $ stackTrace "mapper" "Cannot create room"
+      splitEntrance newroom (room, ed) =
+        rec . baseMap %= mapAddExit room (ed ^. exitKey) newroom (ed ^. exitLayer) initMGExitData
+
+pararoomCmd = mkCommand "pararoom" "Verlege aktuellen Raum in eine Parallelwelt" $
+  f <$> arg intParser "para" "Parallelweltnummer"
+    where
+      f para = do
+        m <- use $ rec . baseMap
+        cur <- use $ rec . currentRoom
+        mapM_ (setPara cur para) $ mapGetEntrances cur m
+      setPara room para (entrance, ed) = do
+        layerName <- getLayerName para
+        rec . baseMap . mapExitDataByNodes entrance room . exitLayer .= layerName
+      getLayerName 0 = return "base"
+      getLayerName para
+        | para < 0 || para > 7 = throwError $ stackTrace "mapper" "Argument muss zwischen 0 und 7 liegen"
+        | otherwise = return $ "p" ++ show para
 
 commands = mconcat $
     [ commandC walkmodeCmd
@@ -271,8 +315,13 @@ commands = mconcat $
     , commandC splitCmd
     , commandC weightCmd
     , commandC addblockerCmd
+    , commandC rmblockerCmd
+    , commandC addbeforeexitCmd
+    , commandC clearbeforeexitCmd
     , commandC saferoomCmd
     , commandC unsaferoomCmd
+    , commandC splitroomCmd
+    , commandC pararoomCmd
     ]
 
 parseParaLayer para
@@ -301,18 +350,22 @@ modeMenu = describe "Mode" $ mconcat
     , bind (KAscii 'u') "Update" $ rec . mode .= ModeUpdate
     ]
 
-loadMap :: (Screen m, MonadIO m, Assets :@: r, R :@: r) => [Int] -> MBX e (Fix r) m ()
-loadMap portals = do
+loadMap :: (Screen m, MonadIO m, Assets :@: r, R :@: r) => MBX e (Fix r) m ()
+loadMap = do
     mapPath <- getGameAssetPath "map"
     mapfile <- liftIO $ Exception.try $ readFile mapPath
     m <- case mapfile of
         Left (e :: Exception.IOException) -> do
             echoLog $ "Creating map: " ++ mapPath
-            return mapEmpty
+            return $ mapEmpty initMGRoomData
         Right mapfile -> do
             echoLog $ "Loading map: " ++ mapPath
-            liftMaybe (stackTrace "mapper" "Invalid map file") $ mapFromString mapfile
-    rec . mapStore .= quasiEq (mkOverlayFull ["base"] portals (undoify 20 m))
+            case mapFromString mapfile of
+                Nothing -> do
+                    echoError $ stackTrace "MAPPER" $ "Invalid map file: " ++ mapPath
+                    return $ mapEmpty initMGRoomData
+                Just m -> return m
+    rec . baseMap .= m
     lock <- liftIO $ acquire mapPath
     case lock of
       Nothing -> do
@@ -323,7 +376,7 @@ loadMap portals = do
 
 saveMap :: (Screen m, MonadIO m, R :@: r) => MBX e (Fix r) m ()
 saveMap = do
-    m  <- use $ rec . mapStore . baseMap
+    m  <- use $ rec . baseMap
     fn <- use $ rec . fileName
     case fn of
         Nothing         -> throwError $ stackTrace "mapper" "No file name given"
@@ -363,12 +416,14 @@ nbf q g | queueEmpty q || isEmpty g = []
                where (p@(v:_),q') = queueGet q
 -}
 
-roomArea :: Int -> Int -> Map -> Maybe String
+{-
+roomArea :: Int -> Int -> MGMap -> Maybe String
 roomArea depth r m =
   let paths = bft r m
       lookupArea x = userValueToString $ lookupUserValue "area" $ m ^. mapRoomData x
       firstArea paths = getFirst $ mconcat $ map (First . lookupArea . head) $ take depth paths
   in firstArea paths
+-}
 
 ------------------------------------------------------------------------------
 
@@ -387,9 +442,9 @@ modeStepper n = do
 fastStepper n = return WalkerContinue
 
 safeStepper n = do
-    isSafe <- lift $ use (rec . mapStore . effectiveMap . mapRoomData n . userFlag "safe")
+    isSafe <- fmap getAny $ lift $ uses (rec . effectiveMap . mapRoomData n . roomValue . mgRoomSafe) Any
     if isSafe
-       then return WalkerContinue
+       then parse (gmcp n) -- return WalkerContinue
        else parse blocker `chainIteration` parse (gmcp n)
   where
     blocker = do
@@ -405,7 +460,7 @@ safeStepper n = do
          else do return WalkerContinue
 
 aggroStepper n = do
-    isSafe <- lift $ use (rec . mapStore . effectiveMap . mapRoomData n . userFlag "safe")
+    isSafe <- fmap getAny $ lift $ uses (rec . effectiveMap . mapRoomData n . roomValue . mgRoomSafe) Any
     if isSafe
        then return WalkerContinue
        else blockerTot `chainIteration` blocker `chainIteration` parse (gmcp n)
@@ -527,8 +582,8 @@ walkRedo stepper = do
 
 findPath :: (MonadState (Fix r) m, R :@: r) => Int -> Int -> m (Maybe [(String, Int)])
 findPath src dest = do
-    m <- use $ rec . mapStore . effectiveMap
-    let weightfun edge = fromMaybe 1 $ userValueToInt $ lookupUserValue "weight" (exitUserData edge)
+    m <- use $ rec . effectiveMap
+    let weightfun edge = edge ^. exitValue . mgExitWeight
     case mapShortestPath weightfun src dest m of
         [] -> return Nothing
         p  -> return $ Just p
@@ -541,45 +596,63 @@ findPathFromCurrent r = do
 findRoom :: (MonadState (Fix r) m, MonadFail m, R :@: r) => String -> m (Maybe Int)
 findRoom name = do
     case name of
-        ('$':n) -> use $ rec . mapStore . hashIndex . applying n
+        ('$':hash) -> do
+          m <- use $ rec . effectiveMap
+          return $ mapFindRoomBy (\x -> hash `elem` x ^. roomValue . mgRoomHash) m
         ('#':n) -> case reads n of
             ((n, _):_) -> return $ Just n
             _ -> fail "Invalid room id"
         tag     -> do
-          m <- use $ rec . mapStore . effectiveMap
-          return $ mapFindRoomBy ((== UserValueString name) . lookupUserValue "tag") m
+          m <- use $ rec . effectiveMap
+          return $ mapFindRoomBy (\x -> Just tag == x ^. roomTag) m
 
 ------------------------------------------------------------------------------
 
 lift2 x = lift $ lift x
 
+data RoomTriggerState = RoomTriggerState
+  { rtsLastline :: String
+  , rtsDidMove :: Bool
+  }
+
+initRoomTriggerState = RoomTriggerState
+  { rtsLastline = ""
+  , rtsDidMove = False
+  }
+
 roomTrigger :: (Screen s, R :@: r, MGEvent a) => Trigger (Ev a) (MB (Fix r) s) ()
-roomTrigger = stateful "" $ permanent $ await >>= \x -> void $ runMaybeT $ msum [ onSend x, onGMCP x, lift (yield x) ]
+roomTrigger = stateful initRoomTriggerState $ permanent $
+  await >>= \x -> void $ runMaybeT $ msum [ onSend x, onGMCP x, lift (yield x) ]
   where
     onSend ev = do
       s <- guardSend ev
       lift $ do
         -- Speicher das fuer das naechste GMCP event.
-        lift $ put $! s
+        lift $ modify' $ \x -> x { rtsLastline = s, rtsDidMove = False }
 
-        mode  <- lift2 $ use $ rec . mode
-        effm  <- lift2 $ use $ rec . mapStore . effectiveMap
+        mmode <- lift2 $ use $ rec . mode
+        effm  <- lift2 $ use $ rec . effectiveMap
         cur   <- lift2 $ use $ rec . currentRoom
 
-        let next = mapFindAdjacentRoom cur s effm       -- Raum, zu dem Ausgang s fuehrt.
+        let next = mapFindAdjacentRooms cur s effm      -- Raum, zu dem Ausgang s fuehrt.
             opp  = lookup s standardExits               -- Evtl. die Gegenrichtung (falls Standardausgang)
 
-        case (mode, next, opp) of
+        case (mmode, next, opp) of
           -- Mapper ist aus. Tu nichts.
           (ModeOff, _, _) -> yieldSend s
           -- Mappermodus "manual", eingegebene Zeile ist ein Standardausgang, angegebene
           -- Richtung existiert noch nicht. Baue neuen Ausgang und bewege in den neuen Raum.
-          (ModeManual, Nothing, Just opp) -> do
-            lift2 $ addRoomAndMoveWith (\r -> mapAddExit r opp cur "base" . mapAddExit cur s r "base")
+          (ModeManual, [], Just opp) -> do
+            lift2 $ addRoomAndMoveWith $ \r ->
+              mapAddExit r opp cur "base" initMGExitData . mapAddExit cur s r "base" initMGExitData
             yieldSend s
           -- Ausgang existiert schon. before-exit-Aktionen ausfuehren und auf Blocker checken.
-          (_, Just next, _) -> do
+          (_, (next:othernext), _) -> do
             let beforeExit = roomActionsBeforeExit effm cur s
+
+            when (not (null othernext)) $ do
+              lift2 $ echoMapper $ "Ausgang '" ++ show s ++ "' nicht eindeutig. Deaktiviere Automapper."
+              lift2 $ rec . mode .= ModeFixed
 
             wegFrei <- roomCheckBlockers effm cur s
             case wegFrei of
@@ -587,6 +660,7 @@ roomTrigger = stateful "" $ permanent $ await >>= \x -> void $ runMaybeT $ msum 
                 -- Weg ist frei
                 lift2 $ rec . currentRoom .= next
                 mapM_ yield beforeExit
+                lift $ modify' $ \s -> s { rtsDidMove = True }
                 yieldSend s
               blockers -> do
                 -- Blocker im Weg
@@ -600,44 +674,51 @@ roomTrigger = stateful "" $ permanent $ await >>= \x -> void $ runMaybeT $ msum 
       lift $ do
         pushback $ mkEv $ GMCPEvent gmcp
 
-        lastline <- lift $ get
+        rts <- lift $ get
+        let lastline = rtsLastline rts
+        let didMove = rtsDidMove rts
 
-        mode    <- lift2 $ use $ rec . mode
-        effm    <- lift2 $ use $ rec . mapStore . effectiveMap
+        mmode   <- lift2 $ use $ rec . mode
+        effm    <- lift2 $ use $ rec . effectiveMap
         cur     <- lift2 $ use $ rec . currentRoom
 
-        let curhash = effm ^. mapRoomData cur . userValue "hash"            -- Gespeicherter Hash des aktuellen Raums
-            newhash = fromMaybe "" $ getStringField "id" gmcp               -- Empfangener Hash
-            mismatch = newhash /= "" && not (containsHash newhash curhash)  -- Sind wir schon im richtigen Raum?
-
-        newroom <- lift2 $ use $ rec . mapStore . hashIndex . applying newhash
+        let curhashes = effm ^. mapRoomData cur . roomValue . mgRoomHash    -- Bekannte Hashes des aktuellen Raums
+            newhash = getStringField "id" gmcp                              -- Empfangener Hash
+            newhash' = fromMaybe "" newhash
+            newroom = mapFindRoomBy (\x -> newhash' `elem` x ^. roomValue . mgRoomHash) effm
 
         lift2 $ rec . roomHash .= newhash
 
         -- Im "update" modus holen wir uns immer die aktuellen Kurzbeschreibungen
         -- und Regionen.
-        case mode of
-          ModeUpdate -> do
-            lift2 $ rec . currentRoomData %= ( maybeInsertString "short" gmcp
-                                             . maybeInsertString "domain" gmcp )
-          _ -> return ()
+        when (mmode == ModeUpdate) $ do
+            lift2 $ rec . currentRoomData . roomValue . mgRoomShort .= getStringField "short" gmcp
+            lift2 $ rec . currentRoomData . roomValue . mgRoomDomain .= getStringField "domain" gmcp
 
-        if mismatch
-          then case (mode, newroom) of
+        if not (newhash' `elem` curhashes)
+          then case (mmode, newroom) of
             -- Mapper ist aus. Tu nichts.
             (ModeOff, _) -> return ()
-            -- Mappermode "auto", Hash ist nicht bekannt. Erstelle neuen Raum und gehe da hin.
+            -- Mappermode "auto", Hash ist nicht bekannt.
             (ModeAuto, Nothing) -> do
-              lift2 $ addRoomAndMoveWith ( \r -> (mapRoomData r %~ M.insert "hash" (UserValueString newhash))
-                                               . (mapRoomData r %~ maybeInsertString "short" gmcp)
-                                               . (mapRoomData r %~ maybeInsertString "domain" gmcp)
-                                               . (mapAddExit cur lastline r "base") )
+              if didMove
+                -- Ausgang existiert bereits, aber die neue Raum-ID ist nicht bekannt. Vermutlich
+                -- Parallelwelt. Fuege dem Raum die neue ID hinzu.
+                -- FIXME: Wenn dem client bekannt ist, dass wir in einer Parallelwelt sind, neuen Ausgang
+                -- mit layer "pN" erzeugen, sonst nur eine Meldung geben und sonst wie ModeFixed
+                then lift2 $ rec . baseMap . mapRoomData cur . roomValue . mgRoomHash %= (++ [newhash'])
+                -- Ausgang existiert noch nicht. Erstelle neuen Raum und gehe da hin.
+                else lift2 $ addRoomAndMoveWith $ \r ->
+                    (mapRoomData r . roomValue . mgRoomHash .~ maybeToList newhash)
+                  . (mapRoomData r . roomValue . mgRoomShort .~ getStringField "short" gmcp)
+                  . (mapRoomData r . roomValue . mgRoomDomain .~ getStringField "domain" gmcp)
+                  . (mapAddExit cur lastline r "base" initMGExitData)
               signal "room-enter"
             -- Mappermode "auto", Hash ist bekannt. Baue ggf. den entsprechenden Ausgang und
             -- bewege in den entsprechenden Raum.
             (ModeAuto, Just r) -> do
               case mapFindAdjacentRoom cur lastline effm of
-                Nothing -> lift2 $ rec . mapStore . baseMap %= mapAddExit cur lastline r "base"
+                Nothing -> lift2 $ rec . baseMap %= mapAddExit cur lastline r "base" initMGExitData
                 Just _  -> return ()
               lift2 $ rec . currentRoom .= r
               signal "room-enter"
@@ -645,14 +726,14 @@ roomTrigger = stateful "" $ permanent $ await >>= \x -> void $ runMaybeT $ msum 
             -- Ein Raum kann mehrere Hashes haben.
             (ModeUpdate, Nothing) -> do
               case newhash of
-                ""      -> return ()
-                newhash -> lift2 $ rec . currentRoomData %= M.alter (Just . addHash newhash . fromMaybe UserValueNull) "hash"
+                Nothing -> return ()
+                Just newhash' -> lift2 $ rec . currentRoomData . roomValue . mgRoomHash %= ((:) newhash')
             -- Mappermode "update", Hash ist bekannt. Fehlermeldung.
             (ModeUpdate, Just r) -> do
-              lift2 $ echoMapper $ "Hash " ++ newhash ++ " ist bereits belegt."
+              lift2 $ echoMapper $ "Hash " ++ newhash' ++ " ist bereits belegt."
             -- Statischer modus, Hash ist unbekannt.
             (_, Nothing) -> do
-              lift2 $ echoMapper $ "Raum " ++ newhash ++ " nicht gefunden"
+              lift2 $ echoMapper $ "Raum " ++ newhash' ++ " nicht gefunden"
             -- Statischer modus, Hash ist bekannt. Geh dahin.
             (_, Just r) -> do
               lift2 $ rec . currentRoom .= r
@@ -660,6 +741,9 @@ roomTrigger = stateful "" $ permanent $ await >>= \x -> void $ runMaybeT $ msum 
           else do
             signal "room-enter"
 
+        lift $ modify' $ \x -> x { rtsDidMove = False }
+
+    {-
     addHash h x = case x of
       UserValueString v -> UserValueArray [UserValueString h, UserValueString v]
       UserValueArray v -> UserValueArray (UserValueString h : v)
@@ -667,18 +751,19 @@ roomTrigger = stateful "" $ permanent $ await >>= \x -> void $ runMaybeT $ msum 
     maybeInsertString s g = case getStringField s g of
       Nothing -> id
       Just x -> M.insert s (UserValueString x)
+    -}
     addRoomAndMoveWith f = do
-      basem <- use $ rec . mapStore . baseMap
-      case mapAddRoom basem of
+      basem <- use $ rec . baseMap
+      case mapAddRoom initMGRoomData basem of
         Nothing -> echoMapper "Konnte Raum nicht erstellen."
         Just (newm, newroom) -> do
           rec . currentRoom .= newroom
-          rec . mapStore . baseMap .= f newroom newm
+          rec . baseMap .= f newroom newm
 
 -----------------------------------------------------------------------------
 
 -- Dummy for now. Later we could add triggers to notify the user that he has found a special room
-specialRoomC :: (Monad m, R :@: r) => Hash -> MBComponent m e (Fix r) (Fix r) -> MBComponent m e (Fix r) (Fix r)
+specialRoomC :: (Monad m, R :@: r) => String -> MBComponent m e (Fix r) (Fix r) -> MBComponent m e (Fix r) (Fix r)
 specialRoomC h c = c
 
 paraRoomC = specialRoomC "a4741e724fb9c425327d9df84dd314e6" $ triggerC 50 $ permanent $ do

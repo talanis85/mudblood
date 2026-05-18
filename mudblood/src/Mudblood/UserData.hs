@@ -4,21 +4,24 @@ module Mudblood.UserData
     , userValueToInt, userValueFromInt
     , userValueToString, userValueFromString
     , userValueToStringArray, userValueFromStringArray
-    , userValue, userFlag, stringAsStringValue, intAsStringValue
+    , userValue, userValueDeleteNull, userFlag, stringAsStringValue, intAsStringValue
     , stringAsStringArray
+    , maybeStringAsString
     , userValueToggle
-    , JSUserData (..), userDataFromString, userDataToString
+    , JSUserData (..) -- , userDataFromString, userDataToString
     ) where
 
+import Data.Aeson
+import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Map as M
+import qualified Data.Text as T
+import qualified Data.Vector as V
 import Data.List
 import Data.Maybe
-import Text.Read
+import Text.Read (readMaybe)
+import Data.String
 
-import Text.JSON
-import Text.JSON.Types
-
-import Control.Lens
+import Control.Lens hiding ((.=))
 
 type UserData = M.Map String UserValue
 
@@ -38,35 +41,51 @@ instance Show UserValue where
 
 newtype JSUserData = JSUserData { getJSUserData :: UserData }
 
+{-
 instance JSON JSUserData where
     readJSON (JSObject o) = return $ JSUserData $ M.map toUserValue $ M.fromList $ fromJSObject o
 
     readJSON _ = fail "Expected object"
 
     showJSON d = showJSON $ toJSObject $ M.toList $ ((M.map fromUserValue (getJSUserData d)) :: M.Map String JSValue)
+-}
 
+instance FromJSON JSUserData where
+  parseJSON (Object o) = JSUserData <$> M.fromList <$> mapM f (KM.toList o)
+    where
+      f (k, v) = case toJSON k of
+                   String t -> return (T.unpack t, toUserValue v)
+                   _ -> fail "Invalid key"
+
+instance ToJSON JSUserData where
+  toJSON (JSUserData x) = Object $ KM.fromList $ map f $ M.toList x
+    where
+      f (k, v) = (fromString k, fromUserValue v)
+
+{-
 userDataFromString :: String -> Maybe UserData
 userDataFromString str = case decodeStrict str of
-    Ok ud -> Just $ getJSUserData ud
+    Left ud -> Just $ getJSUserData ud
     Error _ -> Nothing
 
 userDataToString :: UserData -> String
 userDataToString m = encode $ JSUserData m
+-}
 
 ------------------------------------------------------------------------------
 
-toUserValue JSNull = UserValueNull
-toUserValue (JSBool v) = UserValueBool v
-toUserValue (JSRational _ v) = UserValueRational v
-toUserValue (JSString v) = UserValueString $ fromJSString v
-toUserValue (JSArray v) = UserValueArray $ map toUserValue v
+toUserValue Null = UserValueNull
+toUserValue (Bool v) = UserValueBool v
+toUserValue (Number v) = UserValueRational $ toRational v
+toUserValue (String v) = UserValueString $ T.unpack v
+toUserValue (Array v) = UserValueArray $ map toUserValue $ V.toList v
 toUserValue _ = UserValueNull
 
-fromUserValue UserValueNull = JSNull
-fromUserValue (UserValueBool v) = JSBool v
-fromUserValue (UserValueRational v) = JSRational True v
-fromUserValue (UserValueString v) = JSString $ toJSString v
-fromUserValue (UserValueArray v) = JSArray $ map fromUserValue v
+fromUserValue UserValueNull = Null
+fromUserValue (UserValueBool v) = Bool v
+fromUserValue (UserValueRational v) = Number $ fromRational v
+fromUserValue (UserValueString v) = String $ T.pack v
+fromUserValue (UserValueArray v) = Array $ V.fromList $ map fromUserValue v
 
 ------------------------------------------------------------------------------
 
@@ -103,6 +122,11 @@ userValueToggle v = case v of
 userValue :: String -> Lens' UserData UserValue
 userValue key = lens (lookupUserValue key) (\x y -> M.insert key y x)
 
+userValueDeleteNull :: String -> Lens' UserData UserValue
+userValueDeleteNull key = lens (lookupUserValue key) $ \x y -> case y of
+  UserValueNull -> M.delete key x
+  _ -> M.insert key y x
+
 userFlag :: String -> Lens' UserData Bool
 userFlag key = lens ((== UserValueBool True) . lookupUserValue key) (\x y -> if y then M.insert key (UserValueBool True) x else M.delete key x)
 
@@ -117,3 +141,11 @@ intAsStringValue = lens (show . userValueToInt) (\_ y -> userValueFromInt (fromM
 
 stringAsStringArray :: Lens' UserValue [String]
 stringAsStringArray = lens (fromMaybe [] . userValueToStringArray) (\_ y -> userValueFromStringArray y)
+
+maybeStringAsString :: Lens' (Maybe String) String
+maybeStringAsString = lens to from
+  where
+    to Nothing = ""
+    to (Just x) = x
+    from _ "" = Nothing
+    from _ x = Just x

@@ -12,6 +12,7 @@ module Mudblood.Component.Assets
 
 import Control.Lens
 import Data.Char
+import System.Directory
 import System.FilePath
 
 import Mudblood
@@ -28,11 +29,14 @@ makeLenses ''Assets
 
 ------------------------------------------------------------------------------
 
-assetsC :: (Monad m, Functor r) => FilePath -> String -> MBComponent m e (Fix r) (Fix (Assets :*: r))
-assetsC basePath charName = stateC $ Assets
-    { _stBasePath = basePath
-    , _stCharName = charName
-    }
+assetsC :: (MonadIO m, Functor r) => FilePath -> String -> MBComponent m e (Fix r) (Fix (Assets :*: r))
+assetsC basePath charName = s >>> b
+  where
+    s = stateC $ Assets
+      { _stBasePath = basePath
+      , _stCharName = charName
+      }
+    b = bootC $ liftIO $ createDirectoryIfMissing True (basePath </> map toLower charName)
 
 ------------------------------------------------------------------------------
 

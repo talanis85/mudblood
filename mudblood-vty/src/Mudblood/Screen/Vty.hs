@@ -13,7 +13,7 @@ module Mudblood.Screen.Vty
     , pasteMode
     , widgetMode
 
-    , Layout (..)
+    , Layout (..), AnyMap (..)
 
     , module Mudblood.Screen.Vty.UserWidget
     , module Mudblood.Screen.Vty.Monad
@@ -60,7 +60,7 @@ import           System.Process
 import           System.Exit
 
 import qualified Graphics.Vty as V
-import           Graphics.Vty.Platform.Unix (mkVty)
+import           Graphics.Vty.CrossPlatform (mkVty)
 import           Graphics.Vty.Widget
 
 import           Mudblood.Monad
@@ -93,7 +93,8 @@ import qualified Codec.Binary.UTF8.String as UTF8
 
 -----------------------------------------------------------------------------
 
-type VMBR e u = MBR (Maybe (UserWidget (MB u VtyScreen))) e u VtyScreen
+-- type VMBR e u = MBR (Maybe (UserWidget (MB u VtyScreen))) e u VtyScreen
+type VMBR e u = MBR () e u VtyScreen
 
 instance Screen VtyScreen where
     outputS o    = case o of
@@ -196,10 +197,10 @@ initScreen = do
 needUpdate :: VtyScreen ()
 needUpdate = scrUpdate .= True
 
-run :: (MBEvent e) => Maybe (UserWidget (MB u VtyScreen)) -> MBComponent VtyScreen e () u -> IO ()
-run widget component = do
+run :: (MBEvent e) => (u -> Layout) -> MBComponent VtyScreen e () u -> IO ()
+run sidebar component = do
     st <- initScreen
-    result <- evalVtyScreen (runWithComponent component widget runner) st
+    result <- evalVtyScreen (runWithComponent component () (runner sidebar)) st
     case result of
       Left st -> putStrLn ("Vty Error: " ++ show st)
       Right (Left st') -> putStrLn ("Mudblood Error: " ++ show st')
@@ -208,14 +209,14 @@ run widget component = do
 showError :: (Show a) => a -> VtyScreen ()
 showError = appendLine 0 . toAS . ("ERROR: " ++) . show
 
-runner :: (MBEvent e) => VMBR e u ()
-runner = do
+runner :: (MBEvent e) => (u -> Layout) -> VMBR e u ()
+runner sidebar = do
     chan <- lift $ use scrEventChan
     ev   <- lift $ liftIO $ atomically $ readTChan chan
     handleEvent ev
     handleAllEvents chan
 
-    renderUserWidget
+    renderSidebar sidebar
 
     status <- getStatus
     lift $ scrStatus .= status
@@ -229,7 +230,7 @@ runner = do
             vty <- lift $ use scrVty
             lift $ liftIO $ V.shutdown vty
         else do
-            runner
+            runner sidebar
   where
     handleAllEvents chan = do
         nextEv <- lift $ liftIO $ atomically $ do
@@ -278,30 +279,14 @@ runner = do
                 lift needUpdate
             _ -> return ()
 
-renderUserWidget :: VMBR e u ()
-renderUserWidget = do
-    widget <- mbrGetExtra
-    mode   <- lift $ use scrMode
-    case widget of
-        Nothing -> lift $ scrSidebar .= LayoutEmpty
-        Just widget' -> do
-            layout  <- case mode of
-                WidgetMode -> liftMBR $ current widget' True
-                _          -> liftMBR $ current widget' False
-            lift $ scrSidebar .= layout
+renderSidebar :: (u -> Layout) -> VMBR e u ()
+renderSidebar sidebar = do
+    st <- liftMBR get
+    lift $ scrSidebar .= sidebar st
 
 handleUserWidgetKey :: Key -> VMBR e u Bool
 handleUserWidgetKey k = do
-    widget <- mbrGetExtra
-    case widget of
-        Nothing -> return False
-        Just widget' -> do
-            case transition widget' k of
-                Nothing -> return False
-                Just t -> do
-                    newWidget <- liftMBR t
-                    mbrPutExtra (Just newWidget)
-                    return True
+  return False
 
 connectToHost :: String -> String -> VtyScreen ()
 connectToHost host port = do

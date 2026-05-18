@@ -32,7 +32,7 @@ library
                      , parsec
                      , MissingH
                      , vty
-                     , vty-unix
+                     , vty-crossplatform
                      , mudblood
                      , stm
                      , old-locale

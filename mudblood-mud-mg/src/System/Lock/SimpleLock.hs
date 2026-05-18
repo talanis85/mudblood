@@ -6,14 +6,16 @@ module System.Lock.SimpleLock
 
 import Control.Monad
 import Control.Exception
-import System.Lock.FLock
+import System.FileLock
 
-acquire :: FilePath -> IO (Maybe Lock)
+type Lock = FileLock
+
+acquire :: FilePath -> IO (Maybe FileLock)
 acquire fp = do
-  l <- try (lock fp Exclusive NoBlock) :: IO (Either IOError Lock)
+  l <- try (tryLockFile fp Exclusive) :: IO (Either IOError (Maybe FileLock))
   case l of
     Left err -> return Nothing
-    Right l  -> return $ Just l
+    Right x -> return x
 
-release :: Lock -> IO ()
-release l = void $ (try $ unlock l :: IO (Either IOError ()))
+release :: FileLock -> IO ()
+release l = void $ (try $ unlockFile l :: IO (Either IOError ()))

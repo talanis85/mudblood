@@ -30,9 +30,6 @@ gmcpHello :: [String]           -- ^ A list of supported GMCP modules
           -> [Communication]
 gmcpHello supports =
     [ Communication $ TelnetNeg (Just CMD_DO) (Just OPT_GMCP) []
-    , Communication $ GMCP "Core.Hello" $
-        JSObject $ toJSObject [ ("client", JSString $ toJSString "mudblood"),
-                                ("version", JSString $ toJSString "0.1") -- TODO: Configure this somehow
-                              ]
-    , Communication $ GMCP "Core.Supports.Set" $ JSArray $ map (JSString . toJSString) supports
+    , Communication $ gmcpCoreHello "mudblood" "0.1"
+    , Communication $ gmcpCoreSupportsSet supports
     ]

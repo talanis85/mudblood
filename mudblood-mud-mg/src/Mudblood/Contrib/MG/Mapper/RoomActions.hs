@@ -6,7 +6,7 @@ module Mudblood.Contrib.MG.Mapper.RoomActions
     -- * blockers
     , roomCheckBlockers
     -- * Exit settings
-    , parseExitSettings, unparseExitSettings
+    -- , parseExitSettings, unparseExitSettings
     ) where
 
 import Data.Monoid
@@ -20,9 +20,12 @@ import Text.ParserCombinators.Parsec hiding (try, (<|>), many)
 import qualified Text.ParserCombinators.Parsec as P
 
 import Mudblood
+import Mudblood.Mapper
+import Mudblood.Contrib.MG.Mapper.MGMap
 
+{-
 -- | Read a string array from a room's userdata
-getExitStringArray :: Map       -- ^ The map
+getExitStringArray :: MGMap     -- ^ The map
                    -> Int       -- ^ Room id
                    -> String    -- ^ Exit name
                    -> String    -- ^ Userdata key
@@ -39,8 +42,8 @@ putExitStringArray :: Int       -- ^ Room id
                    -> String    -- ^ Exit name
                    -> String    -- ^ Userdata key
                    -> [String]  -- ^ The string array
-                   -> Map       -- ^ Original map
-                   -> Map
+                   -> MGMap     -- ^ Original map
+                   -> MGMap
 putExitStringArray room ex key value =
     mapExitData room ex Nothing %~ M.insert key (UserValueArray (map UserValueString value))
 
@@ -50,6 +53,12 @@ roomActionsBeforeExit m room ex = map (mkEv . SendEvent) $ getExitStringArray m 
 
 
 mapMaybeM f l = mapM f l >>= return . catMaybes
+-}
+
+-- | Return "before-exit" actions for a given exit
+roomActionsBeforeExit :: (MBEvent a) => MGMap -> Int -> String -> [Ev a]
+roomActionsBeforeExit m room ex = map (mkEv . SendEvent) $
+  m ^. mapExitData room ex Nothing . exitValue . mgExitBeforeExit
 
 knuddelRegexes = map (~=)
     [ "^Wen willst Du denn knuddeln"
@@ -61,8 +70,9 @@ knuddelRegexes = map (~=)
 -- | Check for blockers in a given direction. Return all offending blocker names.
 -- roomCheckBlockers :: Map -> Int -> String -> Iteration' [String]
 roomCheckBlockers m room ex = do
-    let blockers = getExitStringArray m room ex "blockers"
-    ret <- (flip mapMaybeM) blockers $ \b -> do
+    let blockers = m ^. mapExitData room ex Nothing . exitValue . mgExitBlockers
+    -- let blockers = getExitStringArray m room ex "blockers"
+    ret <- fmap catMaybes $ forM blockers $ \b -> do
         yieldSend $ "knuddel " ++ b
         Mudblood.parse $ fetchLine >>= \x ->
             if or $ map ($ x) knuddelRegexes
@@ -74,6 +84,7 @@ roomCheckBlockers m room ex = do
 
 -----------------------------------------------------------------------------
 
+{-
 -- | Parses the following language of exit settings:
 --
 --   Settings ::= (Blocker | Before-exit | Weight)*
@@ -125,3 +136,4 @@ parse_weight = do
     updateState $ M.insert "weight" (userValueFromInt $ read val)
     (void newline <|> eof)
     return ()
+-}
