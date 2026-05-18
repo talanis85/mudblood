@@ -19,6 +19,7 @@ library
                      , Mudblood.Encoding
                      , Mudblood.Text
                      , Mudblood.Screen
+                     , Mudblood.Screen.Debug
                      , Mudblood.Screen.Simple
                      , Mudblood.Screen.Dummy
                      , Mudblood.Telnet
@@ -110,6 +111,22 @@ library
   hs-source-dirs:      src
   ghc-options:         -O1 -auto-all -caf-all
   default-language:    Haskell2010
+
+executable mudblood-debug
+  main-is: Debug.hs
+  build-depends: base
+               , mtl
+               , containers
+               , directory
+               , gitrev
+               , optparse-applicative
+               , mudblood
+               , lens
+               , MissingH
+  hs-source-dirs: app
+  other-modules:
+  default-language: Haskell2010
+  ghc-options: -threaded
 
 test-suite mudblood-trigger-test
   type:                exitcode-stdio-1.0

@@ -79,7 +79,7 @@ actionWithArg = Action . Right
 --------------------------------------------------------------------------------------------------
 
 newtype MBR s e u m r = MBR { runMBR :: StateT (MBRState s e u m) (MB u m) r }
-  deriving (Functor, Applicative, Monad, MonadFail, MonadState (MBRState s e u m), MonadError StackTrace)
+  deriving (Functor, Applicative, Monad, MonadFail, MonadState (MBRState s e u m), MonadError StackTrace, MonadIO)
 
 liftMBR :: (Monad m) => MB u m r -> MBR s e u m r
 liftMBR = MBR . lift

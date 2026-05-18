@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 module Mudblood.Trigger.Event where
 
 import Data.Carte
@@ -35,3 +37,5 @@ class ( LineEvent :<: f, SendEvent :<: f, PromptEvent :<: f, InfoEvent :<: f, Te
 type MBEventType = LineEvent :+: SendEvent :+: PromptEvent :+: InfoEvent :+: TelnetEvent
                :+: GMCPEvent :+: NetworkEvent :+: TimeEvent :+: FeedbackEvent :+: BellEvent
                :+: CommandEvent :+: NilEvent
+
+instance MBEvent MBEventType
