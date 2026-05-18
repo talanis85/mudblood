@@ -289,7 +289,15 @@ instance Sendable GMCP where
     toBinary gmcp = toBinary $ telnetSubneg OPT_GMCP $ UTF8.encode $ dumpGMCP gmcp
 
 telnetSend :: TelnetSocket -> Communication -> IO ()
-telnetSend sock (Communication dat) = send sock (BL.pack (toBinary dat)) >> return ()
+telnetSend sock (Communication dat) = do
+    let bs = BL.pack (toBinary dat)
+    telnetSend' sock bs
+    where
+        telnetSend' sock bs = do
+            n <- send sock bs
+            if n < BL.length bs
+               then telnetSend' sock (BL.drop n bs)
+               else return ()
 
 telnetClose :: TelnetSocket -> IO ()
 telnetClose sock = close sock
