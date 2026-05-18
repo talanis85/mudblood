@@ -72,7 +72,10 @@ instance Screen DebugScreen where
                      OutputError x -> outputMessage "ERROR" $ show x
                      OutputInfo x  -> return ()
                      OutputLog x   -> outputMessage "LOG" x
-  sendS s      = sendToCurrentSocket s
+  sendS s      = do
+    liftIO $ putStrLn $ "*** REAL SEND ***"
+    liftIO $ putStrLn $ UTF8.decode (toBinary s)
+    sendToCurrentSocket s
   setPromptS p = outputMessage "PROMPT" p
   connectS h p = connectScreen h p
   timeS        = return 0
@@ -145,7 +148,10 @@ runner = do
                 return ()
             STelnetEvent neg -> do
                 liftIO $ putStrLn "*** TELNET ***"
-                liftIO $ putStrLn (show neg)
+                liftIO $ putStrLn $ case telnetToGMCP neg of
+                    Nothing -> show neg
+                    Just gmcp -> show gmcp
+                handleTelneg neg
             _ -> do
                 return ()
 
@@ -169,6 +175,22 @@ connectScreen host port = do
         TelnetCloseEvent reason -> liftIO $ telnetReceiveProc chan $ SCloseEvent
 
     telnetReceiveProc chan ev = atomically $ writeTChan chan ev
+
+-----------------------------------------------------------------------------
+
+handleTelneg :: (MBEvent e) => TelnetNeg -> SMBR e u ()
+handleTelneg neg = do
+    case neg of
+        TelnetNeg (Just CMD_EOR) Nothing [] -> do
+            p <- lift $ use scrPrompt
+            lift $ scrPrompt .= []
+            triggerWithDefault defaultHandler $ mkEv $ PromptEvent (escapeAll p)
+        TelnetNeg (Just CMD_WILL) (Just OPT_EOR) [] ->
+            liftMBR $ send $ TelnetNeg (Just CMD_DO) (Just OPT_EOR) []
+        _ -> return ()
+    case telnetToGMCP neg of
+        Nothing   -> triggerWithDefault defaultHandler $ mkEv $ TelnetEvent neg
+        Just gmcp -> triggerWithDefault defaultHandler $ mkEv $ GMCPEvent gmcp
 
 outputLine :: AttrString -> DebugScreen ()
 outputLine l = liftIO $ do

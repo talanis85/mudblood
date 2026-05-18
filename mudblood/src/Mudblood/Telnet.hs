@@ -4,7 +4,7 @@ module Mudblood.Telnet
     ( TelnetSocket
     , TelnetIO
     , TelnetEvent (TelnetRawEvent, TelnetNegEvent, TelnetCloseEvent)
-    , Communication (..), Sendable
+    , Communication (..), Sendable (..)
     -- * Telnet socket primitives
     , telnetSend
     , telnetConnect
