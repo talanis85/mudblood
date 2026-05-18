@@ -74,7 +74,7 @@ instance Screen DebugScreen where
                      OutputLog x   -> outputMessage "LOG" x
   sendS s      = do
     liftIO $ putStrLn $ "*** REAL SEND ***"
-    liftIO $ putStrLn $ UTF8.decode (toBinary s)
+    liftIO $ putStrLn $ show s
     sendToCurrentSocket s
   setPromptS p = outputMessage "PROMPT" p
   connectS h p = connectScreen h p
