@@ -3,7 +3,6 @@ packages:
   - ./mudblood
   - ./mudblood-mud-mg
   - ./mudblood-vty
-  - ./mudblood-talanis
 extra-deps:
   - vty-windows-0.2.0.0
 resolver: lts-22.44
